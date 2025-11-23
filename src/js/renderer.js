@@ -511,6 +511,35 @@ ipcRenderer.on('folder-selected', (event, folderPath) => {
     }
 });
 
+// Menu event listeners
+ipcRenderer.on('menu-open-folder', () => {
+    browseFolderBtn.click();
+});
+
+ipcRenderer.on('menu-play-pause', () => {
+    if (isPlaying) {
+        pauseBtn.click();
+    } else {
+        playBtn.click();
+    }
+});
+
+ipcRenderer.on('menu-next-track', () => {
+    nextBtn.click();
+});
+
+ipcRenderer.on('menu-prev-track', () => {
+    prevBtn.click();
+});
+
+ipcRenderer.on('menu-shuffle', () => {
+    shuffleBtn.click();
+});
+
+ipcRenderer.on('menu-repeat', () => {
+    repeatBtn.click();
+});
+
 // Load folder contents
 function loadFolder(folderPath) {
     console.log('Loading folder:', folderPath);

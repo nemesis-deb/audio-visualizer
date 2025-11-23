@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const DiscordRPC = require('discord-rpc');
 const SpotifyWebApi = require('spotify-web-api-node');
 
@@ -18,8 +18,8 @@ const clientId = '1441891580561850379'; // You'll need to create a Discord app a
 // Spotify API Configuration
 // TODO: Replace with your own Spotify App credentials from https://developer.spotify.com/dashboard
 const spotifyApi = new SpotifyWebApi({
-  clientId: '9c5bfbb409c542118a2fe6a77011aa42',
-  clientSecret: '336180083a254f169dc971d609f22a23',
+  clientId: '96593e8fda6f413db8b19d6bf77a2842',
+  clientSecret: '4653a8cb45cd4ab58bc18b64579660ad',
   redirectUri: 'http://127.0.0.1:8888/callback'
 });
 
@@ -67,6 +67,128 @@ function createWindow() {
   });
 }
 
+// Create application menu
+function createMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open Folder',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            mainWindow.webContents.send('menu-open-folder');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Exit',
+          accelerator: 'CmdOrCtrl+Q',
+          click: () => {
+            app.quit();
+          }
+        }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'delete' },
+        { type: 'separator' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Playback',
+      submenu: [
+        {
+          label: 'Play/Pause',
+          accelerator: 'Space',
+          click: () => {
+            mainWindow.webContents.send('menu-play-pause');
+          }
+        },
+        {
+          label: 'Next Track',
+          accelerator: 'CmdOrCtrl+Right',
+          click: () => {
+            mainWindow.webContents.send('menu-next-track');
+          }
+        },
+        {
+          label: 'Previous Track',
+          accelerator: 'CmdOrCtrl+Left',
+          click: () => {
+            mainWindow.webContents.send('menu-prev-track');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Shuffle',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => {
+            mainWindow.webContents.send('menu-shuffle');
+          }
+        },
+        {
+          label: 'Repeat',
+          accelerator: 'CmdOrCtrl+R',
+          click: () => {
+            mainWindow.webContents.send('menu-repeat');
+          }
+        }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About',
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'About Audio Visualizer',
+              message: 'Audio Visualizer',
+              detail: 'Version 1.0.0\n\nA beautiful audio visualizer with multiple visualization modes.',
+              buttons: ['OK']
+            });
+          }
+        },
+        {
+          label: 'Learn More',
+          click: async () => {
+            const { shell } = require('electron');
+            await shell.openExternal('https://github.com');
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 // Setup IPC handlers
 function setupIPCHandlers() {
   // Handle folder dialog
@@ -111,6 +233,7 @@ function setupIPCHandlers() {
 
 app.whenReady().then(() => {
   createWindow();
+  createMenu();
   setupIPCHandlers();
   initDiscordRPC();
 });
