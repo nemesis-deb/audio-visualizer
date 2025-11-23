@@ -74,6 +74,19 @@
 
     <!-- Controls Bar -->
     <div class="controls-bar">
+      <!-- Now Playing Display -->
+      <div class="now-playing">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 18V5l12-2v13"/>
+          <circle cx="6" cy="18" r="3"/>
+          <circle cx="18" cy="16" r="3"/>
+        </svg>
+        <div class="now-playing-info">
+          <div class="now-playing-title" id="nowPlayingTitle">No song playing</div>
+          <div class="now-playing-artist" id="nowPlayingArtist"></div>
+        </div>
+      </div>
+
       <div class="control-group">
         <button id="prevBtn" disabled class="icon-btn" title="Previous Track">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">

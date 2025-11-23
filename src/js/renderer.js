@@ -42,6 +42,9 @@ let gainNode = null;
 let playbackQueue = [];
 let manualStop = false; // Flag to distinguish manual stop from natural end
 
+// Folder scanning settings
+let includeSubfolders = localStorage.getItem('includeSubfolders') === 'true' || false;
+
 const canvas = document.getElementById('visualizer');
 const ctx = canvas.getContext('2d');
 
@@ -139,28 +142,28 @@ function detectBeat() {
         beatValue *= beatDecay;
         return false;
     }
-    
+
     // Calculate current position in track
     const currentTime = audioContext.currentTime - startTime;
-    
+
     // Calculate beat interval in seconds
     const beatInterval = 60 / detectedBPM;
-    
+
     // Calculate time since track start, adjusted for offset
     const adjustedTime = currentTime - bpmOffset;
-    
+
     // Find the nearest beat time
     const beatNumber = Math.floor(adjustedTime / beatInterval);
     const nextBeatTime = (beatNumber * beatInterval) + bpmOffset;
     const timeSinceLastBeat = currentTime - nextBeatTime;
-    
+
     // Trigger flash if we just passed a beat (within 50ms window)
     if (timeSinceLastBeat >= 0 && timeSinceLastBeat < 0.05 && lastBeatFlash !== beatNumber) {
         lastBeatFlash = beatNumber;
         beatValue = 1.0;
         return true;
     }
-    
+
     // Decay beat value using duration setting
     beatValue *= settings.beatFlashDuration;
     return false;
@@ -175,7 +178,7 @@ async function analyzeBPM(audioBuffer) {
         updateBPMDisplay();
         return;
     }
-    
+
     try {
         console.log('Analyzing BPM...');
         const result = await guess(audioBuffer);
@@ -205,11 +208,29 @@ function updateBPMDisplay() {
     }
 }
 
+// Update now playing display
+function updateNowPlaying(filename) {
+    const nowPlayingTitle = document.getElementById('nowPlayingTitle');
+    const nowPlayingArtist = document.getElementById('nowPlayingArtist');
+    
+    if (nowPlayingTitle && nowPlayingArtist) {
+        const parsed = parseFileName(filename);
+        
+        if (parsed.hasArtist) {
+            nowPlayingTitle.textContent = parsed.title;
+            nowPlayingArtist.textContent = parsed.artist;
+        } else {
+            nowPlayingTitle.textContent = parsed.title;
+            nowPlayingArtist.textContent = '';
+        }
+    }
+}
+
 // Update Discord Rich Presence
 function updateDiscordPresence() {
     // Get current visualizer name
     const currentVisualizer = visualizerManager?.currentVisualizer?.name || 'Waveform';
-    
+
     if (currentFileIndex === -1 || audioFiles.length === 0) {
         ipcRenderer.send('update-discord-presence', {
             state: `Using ${currentVisualizer}`,
@@ -220,38 +241,38 @@ function updateDiscordPresence() {
 
     const file = audioFiles[currentFileIndex];
     const parsed = parseFileName(file.name);
-    
+
     let songName = parsed.hasArtist ? `${parsed.artist} - ${parsed.title}` : parsed.title;
     let details = isPlaying ? `Listening to ${songName}` : `Paused`;
     let state = `Using ${currentVisualizer}`;
-    
+
     const data = {
         details: details,
         state: state
     };
-    
+
     // Add timestamps if playing
     if (isPlaying && audioBuffer) {
         const currentTime = audioContext.currentTime - startTime;
         const remaining = audioBuffer.duration - currentTime;
         data.endTimestamp = Date.now() + (remaining * 1000);
     }
-    
+
     ipcRenderer.send('update-discord-presence', data);
 }
 
 // Update progress bar
 function updateProgress() {
     if (!audioBuffer || !isPlaying) return;
-    
+
     const currentTime = audioContext.currentTime - startTime;
     const duration = audioBuffer.duration;
     const progress = Math.min((currentTime / duration) * 100, 100);
-    
+
     progressFill.style.width = `${progress}%`;
     progressHandle.style.left = `${progress}%`;
     currentTimeEl.textContent = formatTime(currentTime);
-    
+
     if (currentTime >= duration) {
         // Song ended
         isPlaying = false;
@@ -269,10 +290,10 @@ function updateProgress() {
 // Previous track
 prevBtn.addEventListener('click', () => {
     if (audioFiles.length === 0) return;
-    
+
     const wasPlaying = isPlaying;
     const currentTime = isPlaying ? (audioContext.currentTime - startTime) : 0;
-    
+
     // If more than 3 seconds into song, restart it
     if (currentTime > 3 && audioBuffer) {
         loadAudioFile(currentFileIndex);
@@ -284,7 +305,7 @@ prevBtn.addEventListener('click', () => {
         }
         loadAudioFile(prevIndex);
     }
-    
+
     // Auto-play if was playing
     if (wasPlaying) {
         setTimeout(() => playBtn.click(), 100);
@@ -298,7 +319,7 @@ nextBtn.addEventListener('click', () => {
 
 function playNextTrack() {
     if (audioFiles.length === 0) return;
-    
+
     let nextIndex;
     if (shuffleMode) {
         // Random track
@@ -317,7 +338,7 @@ function playNextTrack() {
             }
         }
     }
-    
+
     loadAudioFile(nextIndex).then(() => {
         setTimeout(() => playBtn.click(), 100);
     });
@@ -336,9 +357,9 @@ repeatBtn.addEventListener('click', () => {
     const modes = ['off', 'all', 'one'];
     const currentIndex = modes.indexOf(repeatMode);
     repeatMode = modes[(currentIndex + 1) % modes.length];
-    
+
     repeatBtn.classList.toggle('active', repeatMode !== 'off');
-    
+
     if (repeatMode === 'off') {
         repeatBtn.title = 'Repeat Off';
         repeatBtn.querySelector('svg').innerHTML = '<path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>';
@@ -349,7 +370,7 @@ repeatBtn.addEventListener('click', () => {
         repeatBtn.title = 'Repeat One';
         repeatBtn.querySelector('svg').innerHTML = '<path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><text x="12" y="16" text-anchor="middle" font-size="10" fill="currentColor">1</text>';
     }
-    
+
     console.log('Repeat mode:', repeatMode);
 });
 
@@ -397,7 +418,7 @@ function updateQueueDisplay() {
         queueList.innerHTML = '<div class="empty-state">No songs in queue</div>';
         return;
     }
-    
+
     queueList.innerHTML = '';
     audioFiles.forEach((file, index) => {
         const queueItem = document.createElement('div');
@@ -405,7 +426,7 @@ function updateQueueDisplay() {
         if (index === currentFileIndex) {
             queueItem.classList.add('current');
         }
-        
+
         const parsed = parseFileName(file.name);
         queueItem.innerHTML = `
             <span class="queue-item-number">${index + 1}</span>
@@ -414,7 +435,7 @@ function updateQueueDisplay() {
                 ${parsed.hasArtist ? `<div class="file-artist">${parsed.artist}</div>` : ''}
             </div>
         `;
-        
+
         queueItem.addEventListener('click', () => {
             loadAudioFile(index);
             if (!isPlaying) {
@@ -422,7 +443,7 @@ function updateQueueDisplay() {
             }
             queuePanel.classList.add('hidden');
         });
-        
+
         queueList.appendChild(queueItem);
     });
 }
@@ -430,26 +451,26 @@ function updateQueueDisplay() {
 // Seek to position
 progressBar.addEventListener('click', (e) => {
     if (!audioBuffer) return;
-    
+
     const rect = progressBar.getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
     const seekTime = percent * audioBuffer.duration;
-    
+
     if (isPlaying && audioSource) {
         // Stop current playback
         manualStop = true; // Set flag before stopping
         audioSource.stop();
-        
+
         // Create new source at seek position
         audioSource = audioContext.createBufferSource();
         audioSource.buffer = audioBuffer;
         audioSource.playbackRate.value = playbackRate;
-        
+
         // Connect: source → analyser → gain → destination
         audioSource.connect(analyser);
         analyser.connect(gainNode);
         gainNode.connect(audioContext.destination);
-        
+
         // Handle when audio ends (same as play button)
         audioSource.onended = () => {
             // Check if this was a manual stop
@@ -457,7 +478,7 @@ progressBar.addEventListener('click', (e) => {
                 manualStop = false;
                 return;
             }
-            
+
             // Natural end of song
             if (repeatMode === 'one') {
                 loadAudioFile(currentFileIndex).then(() => {
@@ -476,7 +497,7 @@ progressBar.addEventListener('click', (e) => {
                 currentTimeEl.textContent = '0:00';
             }
         };
-        
+
         audioSource.start(0, seekTime);
         startTime = audioContext.currentTime - seekTime;
     } else {
@@ -505,12 +526,12 @@ const includeSubfoldersCheckbox = document.getElementById('includeSubfoldersChec
 if (includeSubfoldersCheckbox) {
     // Set initial state from localStorage
     includeSubfoldersCheckbox.checked = includeSubfolders;
-    
+
     includeSubfoldersCheckbox.addEventListener('change', (e) => {
         includeSubfolders = e.target.checked;
         localStorage.setItem('includeSubfolders', includeSubfolders);
         console.log('Include subfolders:', includeSubfolders);
-        
+
         // Reload current folder if one is loaded
         if (currentFolder) {
             loadFolder(currentFolder);
@@ -558,34 +579,40 @@ ipcRenderer.on('menu-repeat', () => {
     repeatBtn.click();
 });
 
-// Settings for folder scanning
-let includeSubfolders = localStorage.getItem('includeSubfolders') === 'true' || false;
-
 // Recursively scan folder for audio files
 function scanFolderRecursive(folderPath, audioExtensions) {
     let files = [];
-    
+
     try {
+        console.log('Scanning:', folderPath);
         const items = fs.readdirSync(folderPath);
-        
+        console.log('  Items found:', items.length);
+
         items.forEach(item => {
             const fullPath = path.join(folderPath, item);
-            
+
             try {
                 const stats = fs.statSync(fullPath);
-                
-                if (stats.isDirectory() && includeSubfolders) {
-                    // Recursively scan subdirectory
-                    const subFiles = scanFolderRecursive(fullPath, audioExtensions);
-                    files = files.concat(subFiles);
+
+                if (stats.isDirectory()) {
+                    console.log('  [DIR]', item);
+                    // Recursively scan subdirectory only if includeSubfolders is enabled
+                    if (includeSubfolders) {
+                        const subFiles = scanFolderRecursive(fullPath, audioExtensions);
+                        files = files.concat(subFiles);
+                    }
                 } else if (stats.isFile()) {
+                    // Always check files in current directory
                     const ext = path.extname(item).toLowerCase();
                     if (audioExtensions.includes(ext)) {
+                        console.log('  [AUDIO]', item);
                         files.push({
                             name: item,
                             path: fullPath,
                             folder: path.basename(path.dirname(fullPath))
                         });
+                    } else {
+                        console.log('  [FILE]', item, '(not audio)');
                     }
                 }
             } catch (err) {
@@ -595,14 +622,17 @@ function scanFolderRecursive(folderPath, audioExtensions) {
     } catch (error) {
         console.error('Error scanning folder:', folderPath, error.message);
     }
-    
+
+    console.log('  Total audio files from', folderPath, ':', files.length);
     return files;
 }
 
 // Load folder contents
 function loadFolder(folderPath) {
-    console.log('Loading folder:', folderPath, 'Include subfolders:', includeSubfolders);
-    
+    console.log('=== Loading folder ===');
+    console.log('Path:', folderPath);
+    console.log('Include subfolders:', includeSubfolders);
+
     try {
         // Check if folder exists
         if (!fs.existsSync(folderPath)) {
@@ -610,11 +640,15 @@ function loadFolder(folderPath) {
         }
 
         const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma'];
-        
+
         // Scan folder (with or without subfolders)
+        console.log('Starting scan...');
         audioFiles = scanFolderRecursive(folderPath, audioExtensions);
-        
-        console.log('Found files:', audioFiles.length);
+
+        console.log('Scan complete. Found files:', audioFiles.length);
+        if (audioFiles.length > 0) {
+            console.log('First 5 files:', audioFiles.slice(0, 5).map(f => f.name));
+        }
 
         // Sort alphabetically
         audioFiles.sort((a, b) => a.name.localeCompare(b.name));
@@ -624,18 +658,18 @@ function loadFolder(folderPath) {
         renderFileList();
 
         console.log(`Loaded ${audioFiles.length} audio files from ${folderPath}`);
-        
+
         // Update file count
         fileCount.textContent = `${audioFiles.length} song${audioFiles.length !== 1 ? 's' : ''}`;
-        
+
         // Enable prev/next buttons if we have songs
         prevBtn.disabled = audioFiles.length === 0;
         nextBtn.disabled = audioFiles.length === 0;
-        
+
         // Save last opened folder to localStorage
         localStorage.setItem('lastOpenedFolder', folderPath);
         console.log('Saved last opened folder:', folderPath);
-        
+
         if (audioFiles.length === 0) {
             fileBrowser.innerHTML = '<div class="empty-state">No audio files found in this folder<br><small>Supported: MP3, WAV, OGG, FLAC, M4A, AAC, WMA</small></div>';
         }
@@ -648,22 +682,22 @@ function loadFolder(folderPath) {
 // Update folder path display
 function updateFolderPath(folderPathStr) {
     if (!folderPathStr) return;
-    
+
     const pathParts = folderPathStr.split(path.sep).filter(part => part);
     if (pathParts.length === 0) return;
-    
+
     folderPath.innerHTML = '';
 
     const homeSpan = document.createElement('span');
     homeSpan.className = 'path-segment';
-    
+
     const svgIcon = '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="vertical-align: middle; margin-right: 4px;"><path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z"/></svg>';
     const folderName = pathParts[pathParts.length - 1];
-    
+
     homeSpan.innerHTML = svgIcon;
     const textNode = document.createTextNode(folderName);
     homeSpan.appendChild(textNode);
-    
+
     folderPath.appendChild(homeSpan);
 }
 
@@ -671,17 +705,17 @@ function updateFolderPath(folderPathStr) {
 function parseFileName(filename) {
     // Remove extension
     const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
-    
+
     // Common patterns:
     // "Artist - Song Title"
     // "Artist-Song Title"
     // "01 Artist - Song Title"
     // "01. Artist - Song Title"
     // "Song Title"
-    
+
     // Remove leading track numbers (01, 01., 1., etc.)
     let cleaned = nameWithoutExt.replace(/^\d+[\s.-]*/, '');
-    
+
     // Try to split by " - " or " – " (em dash)
     const separators = [' - ', ' – ', ' — '];
     for (const sep of separators) {
@@ -694,7 +728,7 @@ function parseFileName(filename) {
             };
         }
     }
-    
+
     // No separator found, treat entire name as title
     return {
         artist: '',
@@ -713,17 +747,17 @@ function renderFileList() {
     // Filter files based on search query
     const filteredFiles = audioFiles.filter((file, index) => {
         if (!searchQuery) return true;
-        
+
         const parsed = parseFileName(file.name);
         const searchLower = searchQuery.toLowerCase();
-        
+
         return parsed.title.toLowerCase().includes(searchLower) ||
-               parsed.artist.toLowerCase().includes(searchLower) ||
-               file.name.toLowerCase().includes(searchLower);
+            parsed.artist.toLowerCase().includes(searchLower) ||
+            file.name.toLowerCase().includes(searchLower);
     });
 
     fileBrowser.innerHTML = '';
-    
+
     if (filteredFiles.length === 0) {
         fileBrowser.innerHTML = '<div class="empty-state">No songs match your search</div>';
         return;
@@ -736,24 +770,24 @@ function renderFileList() {
         fileItem.dataset.index = index;
 
         const parsed = parseFileName(file.name);
-        
+
         // Create file item HTML with artist and title
         const iconSpan = document.createElement('span');
         iconSpan.className = 'file-icon';
         iconSpan.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>';
-        
+
         const contentDiv = document.createElement('div');
         contentDiv.className = 'file-content';
-        
+
         if (parsed.hasArtist) {
             const titleDiv = document.createElement('div');
             titleDiv.className = 'file-title';
             titleDiv.textContent = parsed.title;
-            
+
             const artistDiv = document.createElement('div');
             artistDiv.className = 'file-artist';
             artistDiv.textContent = parsed.artist;
-            
+
             contentDiv.appendChild(titleDiv);
             contentDiv.appendChild(artistDiv);
         } else {
@@ -762,7 +796,7 @@ function renderFileList() {
             titleDiv.textContent = parsed.title;
             contentDiv.appendChild(titleDiv);
         }
-        
+
         fileItem.appendChild(iconSpan);
         fileItem.appendChild(contentDiv);
 
@@ -793,7 +827,7 @@ searchInput.addEventListener('input', (e) => {
 // Load audio file
 async function loadAudioFile(index) {
     console.log('loadAudioFile called with index:', index);
-    
+
     if (index < 0 || index >= audioFiles.length) {
         console.log('Invalid index, returning');
         return;
@@ -812,7 +846,7 @@ async function loadAudioFile(index) {
 
     currentFileIndex = index;
     const file = audioFiles[index];
-    
+
     if (!file || !file.path) {
         console.error('Invalid file object:', file);
         statusText.textContent = 'Error: Invalid file';
@@ -827,12 +861,12 @@ async function loadAudioFile(index) {
         if (!fs.existsSync(file.path)) {
             throw new Error('File does not exist: ' + file.path);
         }
-        
+
         console.log('Reading file...');
         // Read file
         const buffer = fs.readFileSync(file.path);
         console.log('File read successfully, size:', buffer.length, 'bytes');
-        
+
         const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
         console.log('ArrayBuffer created, byteLength:', arrayBuffer.byteLength);
 
@@ -844,18 +878,21 @@ async function loadAudioFile(index) {
         statusText.textContent = `${file.name} (${audioBuffer.duration.toFixed(1)}s)`;
         playBtn.disabled = false;
         pauseBtn.disabled = true;
-        
+
         // Reset time display
         durationEl.textContent = formatTime(audioBuffer.duration);
         currentTimeEl.textContent = '0:00';
         progressFill.style.width = '0%';
         progressHandle.style.left = '0%';
         pauseTime = 0;
-        
+
         // Reset and analyze BPM
         detectedBPM = 0;
         updateBPMDisplay();
         analyzeBPM(audioBuffer); // Async analysis in background
+
+        // Update now playing display
+        updateNowPlaying(file.name);
 
         // Update UI
         updateFileSelection();
@@ -910,7 +947,7 @@ playBtn.addEventListener('click', () => {
             manualStop = false; // Reset flag
             return; // Don't auto-play next track
         }
-        
+
         // Natural end of song
         if (repeatMode === 'one') {
             // Repeat current song
@@ -939,7 +976,7 @@ playBtn.addEventListener('click', () => {
     audioSource.start(0, offset);
     startTime = audioContext.currentTime - offset;
     pauseTime = 0;
-    
+
     isPlaying = true;
     statusText.textContent = 'Playing...';
     playBtn.disabled = true;
@@ -948,7 +985,7 @@ playBtn.addEventListener('click', () => {
 
     // Update file selection UI
     updateFileSelection();
-    
+
     // Update Discord presence
     updateDiscordPresence();
 
@@ -1158,18 +1195,18 @@ class CircularVisualizer extends Visualizer {
         // Mirror effect - draw additional mirrored copies
         if (settings.mirrorEffect) {
             this.ctx.globalAlpha = 0.6;
-            
+
             // Draw 4 mirrored copies for kaleidoscope effect
             this.ctx.save();
             this.ctx.translate(centerX, centerY);
-            
+
             for (let i = 1; i <= 3; i++) {
                 this.ctx.rotate(Math.PI / 2);
                 this.ctx.scale(1, -1);
                 this.drawCircularWave(0, 0, radius, 0.8 - i * 0.15);
                 this.ctx.scale(1, -1);
             }
-            
+
             this.ctx.restore();
             this.ctx.globalAlpha = 1;
         }
@@ -1256,10 +1293,10 @@ class ParticleVisualizer extends Visualizer {
         let bassSum = 0;
         let midSum = 0;
         let trebleSum = 0;
-        
+
         const bassEnd = Math.floor(frequencyData.length * 0.1);
         const midEnd = Math.floor(frequencyData.length * 0.4);
-        
+
         for (let i = 0; i < bassEnd; i++) {
             bassSum += frequencyData[i];
         }
@@ -1269,7 +1306,7 @@ class ParticleVisualizer extends Visualizer {
         for (let i = midEnd; i < frequencyData.length; i++) {
             trebleSum += frequencyData[i];
         }
-        
+
         this.bassEnergy = (bassSum / bassEnd) / 255;
         this.midEnergy = (midSum / (midEnd - bassEnd)) / 255;
         this.trebleEnergy = (trebleSum / (frequencyData.length - midEnd)) / 255;
@@ -1297,7 +1334,7 @@ class ParticleVisualizer extends Visualizer {
             // Different particles react to different frequencies
             const freqIndex = Math.floor((index / this.particles.length) * 3);
             let particleEnergy = energy;
-            
+
             if (freqIndex === 0) particleEnergy *= (1 + this.bassEnergy * 2);
             else if (freqIndex === 1) particleEnergy *= (1 + this.midEnergy);
             else particleEnergy *= (1 + this.trebleEnergy);
@@ -1315,23 +1352,23 @@ class ParticleVisualizer extends Visualizer {
 
             // Draw particle with energy-based size and color
             const particleSize = particle.size * (1 + particleEnergy * 0.5);
-            
+
             // Color varies based on energy
             const primaryRgb = parseInt(settings.primaryColor.slice(1), 16);
             const pr = (primaryRgb >> 16) & 255;
             const pg = (primaryRgb >> 8) & 255;
             const pb = primaryRgb & 255;
-            
+
             // Add energy-based color variation
             const colorR = Math.min(255, pr + particleEnergy * 50);
             const colorG = Math.min(255, pg + particleEnergy * 30);
             const colorB = Math.min(255, pb + particleEnergy * 20);
-            
+
             this.ctx.fillStyle = `rgba(${colorR}, ${colorG}, ${colorB}, ${0.6 + particleEnergy * 0.4})`;
             this.ctx.beginPath();
             this.ctx.arc(particle.x, particle.y, particleSize, 0, Math.PI * 2);
             this.ctx.fill();
-            
+
             // Add glow effect on high energy
             if (particleEnergy > 1) {
                 this.ctx.shadowBlur = 10 * particleEnergy;
@@ -1516,7 +1553,7 @@ class WaveRingsVisualizer extends Visualizer {
     drawRings(centerX, centerY, amplitudeScale, inverted) {
         for (let ring = 0; ring < this.settings.ringCount; ring++) {
             const baseRadius = (ring + 1) * this.settings.ringSpacing;
-            
+
             this.ctx.strokeStyle = settings.primaryColor;
             this.ctx.lineWidth = settings.lineWidth;
             this.ctx.globalAlpha = (1 - (ring / this.settings.ringCount) * 0.5) * (inverted ? 0.5 : 1);
@@ -1527,12 +1564,12 @@ class WaveRingsVisualizer extends Visualizer {
                 const angle = (i / points) * Math.PI * 2;
                 const dataIndex = Math.floor((i / points) * this.timeDomainData.length);
                 let amplitude = ((this.timeDomainData[dataIndex] / 255) - 0.5) * 50 * settings.sensitivity * amplitudeScale;
-                
+
                 // Invert amplitude for mirror effect
                 if (inverted) {
                     amplitude = -amplitude;
                 }
-                
+
                 const radius = baseRadius + amplitude;
 
                 const x = centerX + Math.cos(angle) * radius;
@@ -1578,7 +1615,7 @@ class OscilloscopeVisualizer extends Visualizer {
         if (this.settings.gridLines) {
             this.ctx.strokeStyle = '#333';
             this.ctx.lineWidth = 1;
-            
+
             // Horizontal lines
             for (let i = 0; i <= 4; i++) {
                 const y = (this.canvas.height / 4) * i;
@@ -1587,7 +1624,7 @@ class OscilloscopeVisualizer extends Visualizer {
                 this.ctx.lineTo(this.canvas.width, y);
                 this.ctx.stroke();
             }
-            
+
             // Vertical lines
             for (let i = 0; i <= 8; i++) {
                 const x = (this.canvas.width / 8) * i;
@@ -1648,7 +1685,7 @@ function animate() {
 
     // Detect beats
     const isBeat = detectBeat(frequencyData);
-    
+
     // Apply beat flash effect to canvas
     if (settings.beatDetection && beatValue > 0.1) {
         const flashIntensity = beatValue * settings.beatFlashIntensity;
@@ -1660,7 +1697,7 @@ function animate() {
     // Update and draw current visualizer
     visualizerManager.update(timeDomainData, frequencyData);
     visualizerManager.draw();
-    
+
     // Update progress bar
     updateProgress();
 }
@@ -1686,7 +1723,7 @@ function updateCustomSettings() {
     if (!visualizer) return;
 
     const customSettings = visualizer.getCustomSettings();
-    
+
     if (customSettings.length === 0) {
         customSettingsContainer.innerHTML = '';
         customSettingsContainer.style.display = 'none';
@@ -1703,7 +1740,7 @@ function updateCustomSettings() {
         if (setting.type === 'range') {
             const label = document.createElement('label');
             label.innerHTML = `${setting.label}: <span id="${setting.key}Value">${setting.value}</span>`;
-            
+
             const input = document.createElement('input');
             input.type = 'range';
             input.min = setting.min;
@@ -1719,7 +1756,7 @@ function updateCustomSettings() {
         } else if (setting.type === 'select') {
             const label = document.createElement('label');
             label.textContent = setting.label + ':';
-            
+
             const select = document.createElement('select');
             select.style.cssText = 'background: #1a1a1a; color: #fff; border: 1px solid #444; padding: 5px; border-radius: 3px; width: 100%;';
             setting.options.forEach(opt => {
@@ -1869,7 +1906,7 @@ function loadSettings() {
         document.getElementById('bgColorValue').textContent = settings.bgColor;
 
         mirrorEffectInput.checked = settings.mirrorEffect;
-        
+
         // Beat detection settings
         if (beatDetectionInput) {
             beatDetectionInput.checked = settings.beatDetection !== false;
@@ -1904,7 +1941,7 @@ setTimeout(() => {
 document.addEventListener('keydown', (e) => {
     // Ignore if typing in input/select
     if (e.target.matches('input, select')) return;
-    
+
     // Space = Play/Pause
     if (e.code === 'Space') {
         e.preventDefault();

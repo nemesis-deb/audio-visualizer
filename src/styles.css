@@ -1,5 +1,33 @@
 * {
   box-sizing: border-box;
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #444 #1a1a1a;
+}
+
+/* Custom Scrollbar - Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 6px;
+  border: 2px solid #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00ff88;
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: #00dd77;
 }
 
 body {
@@ -141,6 +169,48 @@ h1 {
   align-items: center;
   gap: 15px;
   flex-wrap: wrap;
+}
+
+/* Now Playing Display */
+.now-playing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: #1f1f1f;
+  border-radius: 5px;
+  border: 1px solid #333;
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.now-playing svg {
+  color: #00ff88;
+  flex-shrink: 0;
+}
+
+.now-playing-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.now-playing-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.now-playing-artist {
+  font-size: 12px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
 }
 
 .control-group {
@@ -443,6 +513,19 @@ select {
   border-radius: 3px;
   cursor: pointer;
   font-size: 14px;
+  min-width: 180px;
+  transition: all 0.2s;
+}
+
+select:hover {
+  background: #252525;
+  border-color: #00ff88;
+}
+
+select:focus {
+  border-color: #00ff88;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
 }
 
 /* Canvas */
