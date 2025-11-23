@@ -1,8 +1,8 @@
-# Audio Visualizer
+# Spectra
 
 A beautiful real-time audio visualizer built with Electron, featuring multiple visualization modes, beat detection, BPM analysis, and Discord Rich Presence integration.
 
-![Audio Visualizer](icon_nobg.png)
+![Spectra](icon_nobg.png)
 
 ## Features
 
@@ -60,8 +60,8 @@ Download the latest installer from the [Releases](../../releases) page.
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/audio-visualizer.git
-   cd audio-visualizer
+   git clone https://github.com/yourusername/spectra.git
+   cd spectra
    ```
 
 2. **Install dependencies**
@@ -97,7 +97,7 @@ See [SPOTIFY_SETUP.md](SPOTIFY_SETUP.md) for detailed step-by-step instructions.
 ## Discord Rich Presence Setup
 
 1. Go to https://discord.com/developers/applications
-2. Create a new application named "Audio Visualizer"
+2. Create a new application named "Spectra"
 3. Copy the Application ID
 4. Open `main.js` and replace the `clientId` on line 6
 5. (Optional) Upload your icon in Rich Presence → Art Assets as `icon`
@@ -124,7 +124,7 @@ See [DISCORD_SETUP.md](DISCORD_SETUP.md) for detailed instructions.
 ## Project Structure
 
 ```
-audio-visualizer/
+spectra/
 ├── main.js              # Electron main process
 ├── renderer.js          # Renderer process & visualizers
 ├── index.html           # UI layout

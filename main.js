@@ -27,7 +27,7 @@ let spotifyAuthServer = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1400,
+    width: 1600,
     height: 900,
     minWidth: 1000,
     minHeight: 700,
@@ -78,6 +78,14 @@ function createMenu() {
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             mainWindow.webContents.send('menu-open-folder');
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            mainWindow.webContents.send('menu-open-settings');
           }
         },
         { type: 'separator' },

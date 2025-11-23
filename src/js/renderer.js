@@ -1,3 +1,23 @@
+// ES6 imports
+import { setSettings } from './visualizers/base.js';
+import { WaveformVisualizer } from './visualizers/waveform.js';
+import { FrequencyBarsVisualizer } from './visualizers/frequency-bars.js';
+import { CircularVisualizer } from './visualizers/circular.js';
+import { ParticleVisualizer } from './visualizers/particle.js';
+import { SpectrumVisualizer } from './visualizers/spectrum.js';
+import { RadialBarsVisualizer } from './visualizers/radial-bars.js';
+import { WaveRingsVisualizer } from './visualizers/wave-rings.js';
+import { OscilloscopeVisualizer } from './visualizers/oscilloscope.js';
+import { KaleidoscopeVisualizer } from './visualizers/kaleidoscope.js';
+import { DnaHelixVisualizer } from './visualizers/dna-helix.js';
+import { StarfieldVisualizer } from './visualizers/starfield.js';
+import { TunnelVisualizer } from './visualizers/tunnel.js';
+import { FireworksVisualizer } from './visualizers/fireworks.js';
+import { FileManager } from './modules/file-manager.js';
+import { DiscordRPC } from './modules/discord-rpc.js';
+import { BPMDetector } from './modules/bpm-detector.js';
+import { SpotifyIntegration } from './modules/spotify-integration.js';
+
 console.log('Renderer process loaded!');
 
 // Global error handlers
@@ -13,22 +33,34 @@ window.addEventListener('unhandledrejection', (event) => {
     event.preventDefault();
 });
 
-// Import BPM detection library
-let guess = null;
-try {
-    const beatDetector = require('web-audio-beat-detector');
-    guess = beatDetector.guess;
-    console.log('BPM detection library loaded successfully');
-} catch (error) {
-    console.warn('BPM detection library not available:', error.message);
-}
+// CommonJS requires (Node.js modules)
+const path = require('path');
 
 // Audio variables (declare first)
+// Create module instances
+const fileManager = new FileManager();
+const discordRPC = new DiscordRPC();
+const bpmDetector = new BPMDetector();
+const spotify = new SpotifyIntegration();
+
+// Setup Spotify BPM callback
+spotify.onBPMReceived = (tempo) => {
+    bpmDetector.setBPM(tempo);
+    detectedBPM = bpmDetector.getBPM();
+    updateBPMDisplay();
+    console.log('Spotify track BPM:', detectedBPM);
+};
+
+// Helper function for parsing filenames (uses fileManager)
+function parseFileName(filename) {
+    return fileManager.parseFileName(filename);
+}
+
 let audioBuffer = null;
 let audioSource = null;
 let isPlaying = false;
 let currentFolder = '';
-let audioFiles = [];
+let audioFiles = []; // Will be synced with fileManager.audioFiles
 let currentFileIndex = -1;
 let searchQuery = '';
 let startTime = 0;
@@ -46,11 +78,22 @@ let manualStop = false; // Flag to distinguish manual stop from natural end
 let includeSubfolders = localStorage.getItem('includeSubfolders') === 'true' || false;
 
 const canvas = document.getElementById('visualizer');
-const ctx = canvas.getContext('2d');
+const ctx = canvas.getContext('2d', {
+    alpha: false,           // Disable alpha for better performance
+    desynchronized: true,   // Reduce latency, allow GPU to work ahead
+    willReadFrequently: false,  // We're not reading pixels, only drawing
+    colorSpace: 'srgb'      // Explicit color space for better performance
+});
+
+// Enable image smoothing for better quality
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = 'high';
 
 // Create audio context
 const audioContext = new AudioContext();
 console.log('AudioContext created:', audioContext.state);
+console.log('Canvas 2D context created with GPU acceleration hints');
+console.log('Note: 2D canvas is primarily CPU-bound. For better GPU usage, use 3D visualizers (DNA Helix, Tunnel).');
 
 // Create gain node for volume control
 gainNode = audioContext.createGain();
@@ -116,17 +159,19 @@ const settings = {
     mirrorEffect: false,
     beatDetection: true,
     beatFlashIntensity: 0.3,
-    beatFlashDuration: 0.92
+    beatFlashDuration: 0.92,
+    gpuAcceleration: true
 };
+
+// Share settings with visualizers
+setSettings(settings);
 
 // Beat detection variables
 let beatValue = 0;
 const beatDecay = 0.95; // Decay rate for beat flash effect
 
-// BPM detection variables
-let detectedBPM = 0;
-let bpmOffset = 0; // Offset from start of track to first beat
-let lastBeatFlash = 0;
+// BPM detection (now handled by bpmDetector module)
+let detectedBPM = 0; // Keep for backward compatibility
 
 // Format time in MM:SS
 function formatTime(seconds) {
@@ -136,72 +181,28 @@ function formatTime(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Beat detection using BPM timing
+// Beat detection using BPM timing (wrapper for bpmDetector module)
 function detectBeat() {
-    if (!settings.beatDetection || detectedBPM === 0 || !isPlaying) {
-        beatValue *= beatDecay;
-        return false;
-    }
-
-    // Calculate current position in track
-    const currentTime = audioContext.currentTime - startTime;
-
-    // Calculate beat interval in seconds
-    const beatInterval = 60 / detectedBPM;
-
-    // Calculate time since track start, adjusted for offset
-    const adjustedTime = currentTime - bpmOffset;
-
-    // Find the nearest beat time
-    const beatNumber = Math.floor(adjustedTime / beatInterval);
-    const nextBeatTime = (beatNumber * beatInterval) + bpmOffset;
-    const timeSinceLastBeat = currentTime - nextBeatTime;
-
-    // Trigger flash if we just passed a beat (within 50ms window)
-    if (timeSinceLastBeat >= 0 && timeSinceLastBeat < 0.05 && lastBeatFlash !== beatNumber) {
-        lastBeatFlash = beatNumber;
-        beatValue = 1.0;
-        return true;
-    }
-
-    // Decay beat value using duration setting
-    beatValue *= settings.beatFlashDuration;
-    return false;
+    const result = bpmDetector.detectBeat(settings, isPlaying, audioContext, startTime);
+    beatValue = bpmDetector.getBeatValue(); // Sync for backward compatibility
+    return result;
 }
 
-// Analyze BPM using web-audio-beat-detector library
+// Analyze BPM using web-audio-beat-detector library (wrapper)
 async function analyzeBPM(audioBuffer) {
-    if (!guess) {
-        console.log('BPM detection not available');
-        detectedBPM = 0;
-        bpmOffset = 0;
-        updateBPMDisplay();
-        return;
-    }
-
-    try {
-        console.log('Analyzing BPM...');
-        const result = await guess(audioBuffer);
-        detectedBPM = Math.round(result.bpm);
-        bpmOffset = result.offset || 0; // Time offset to first beat
-        lastBeatFlash = -1; // Reset beat counter
-        console.log('✓ BPM detected:', detectedBPM, 'Offset:', bpmOffset.toFixed(3) + 's', 'Tempo:', result.tempo);
-        updateBPMDisplay();
-    } catch (error) {
-        console.error('BPM detection failed:', error);
-        detectedBPM = 0;
-        bpmOffset = 0;
-        updateBPMDisplay();
-    }
+    const result = await bpmDetector.analyze(audioBuffer);
+    detectedBPM = result.bpm; // Sync for backward compatibility
+    updateBPMDisplay();
 }
 
 // Update BPM display
 function updateBPMDisplay() {
     const bpmDisplay = document.getElementById('bpmDisplay');
     if (bpmDisplay) {
-        if (detectedBPM > 0) {
-            bpmDisplay.textContent = `${detectedBPM} BPM`;
-            console.log('BPM updated:', detectedBPM);
+        const bpm = bpmDetector.getBPM();
+        if (bpm > 0) {
+            bpmDisplay.textContent = `${bpm} BPM`;
+            console.log('BPM updated:', bpm);
         } else {
             bpmDisplay.textContent = '-- BPM';
         }
@@ -226,39 +227,19 @@ function updateNowPlaying(filename) {
     }
 }
 
-// Update Discord Rich Presence
+// Update Discord Rich Presence (wrapper for discordRPC module)
 function updateDiscordPresence() {
-    // Get current visualizer name
-    const currentVisualizer = visualizerManager?.currentVisualizer?.name || 'Waveform';
+    const currentFile = currentFileIndex >= 0 && audioFiles.length > 0 ? audioFiles[currentFileIndex] : null;
 
-    if (currentFileIndex === -1 || audioFiles.length === 0) {
-        ipcRenderer.send('update-discord-presence', {
-            state: `Using ${currentVisualizer}`,
-            details: 'No song playing'
-        });
-        return;
-    }
-
-    const file = audioFiles[currentFileIndex];
-    const parsed = parseFileName(file.name);
-
-    let songName = parsed.hasArtist ? `${parsed.artist} - ${parsed.title}` : parsed.title;
-    let details = isPlaying ? `Listening to ${songName}` : `Paused`;
-    let state = `Using ${currentVisualizer}`;
-
-    const data = {
-        details: details,
-        state: state
-    };
-
-    // Add timestamps if playing
-    if (isPlaying && audioBuffer) {
-        const currentTime = audioContext.currentTime - startTime;
-        const remaining = audioBuffer.duration - currentTime;
-        data.endTimestamp = Date.now() + (remaining * 1000);
-    }
-
-    ipcRenderer.send('update-discord-presence', data);
+    discordRPC.updatePresence({
+        visualizerName: visualizerManager?.currentVisualizer?.name || 'Waveform',
+        currentFile: currentFile,
+        isPlaying: isPlaying,
+        audioBuffer: audioBuffer,
+        audioContext: audioContext,
+        startTime: startTime,
+        parseFileName: parseFileName
+    });
 }
 
 // Update progress bar
@@ -379,6 +360,8 @@ volumeSlider.addEventListener('input', (e) => {
     volume = e.target.value / 100;
     gainNode.gain.value = volume;
     volumeValue.textContent = `${e.target.value}%`;
+    // Update CSS variable for gradient
+    volumeSlider.style.setProperty('--volume-percent', `${e.target.value}%`);
 });
 
 // Speed control
@@ -515,7 +498,7 @@ progressBar.addEventListener('click', (e) => {
 
 // ===== FILE BROWSER =====
 const fs = require('fs');
-const path = require('path');
+// path already required at top
 const { ipcRenderer } = require('electron');
 
 // Browse folder button
@@ -527,17 +510,21 @@ browseFolderBtn.addEventListener('click', async () => {
 // Include subfolders checkbox
 const includeSubfoldersCheckbox = document.getElementById('includeSubfoldersCheckbox');
 if (includeSubfoldersCheckbox) {
-    // Set initial state from localStorage
-    includeSubfoldersCheckbox.checked = includeSubfolders;
+    // Set initial state from fileManager
+    includeSubfoldersCheckbox.checked = fileManager.includeSubfolders;
 
     includeSubfoldersCheckbox.addEventListener('change', (e) => {
-        includeSubfolders = e.target.checked;
-        localStorage.setItem('includeSubfolders', includeSubfolders);
-        console.log('Include subfolders:', includeSubfolders);
+        fileManager.setIncludeSubfolders(e.target.checked);
+        console.log('Include subfolders:', e.target.checked);
 
         // Reload current folder if one is loaded
         if (currentFolder) {
-            loadFolder(currentFolder);
+            const result = fileManager.loadFolder(currentFolder);
+            if (result.success) {
+                audioFiles = result.files;
+                renderFileList();
+                fileCount.textContent = `${result.count} song${result.count !== 1 ? 's' : ''}`;
+            }
         }
     });
 }
@@ -546,8 +533,18 @@ if (includeSubfoldersCheckbox) {
 ipcRenderer.on('folder-selected', (event, folderPath) => {
     console.log('Received folder path:', folderPath);
     if (folderPath) {
-        currentFolder = folderPath;
-        loadFolder(currentFolder);
+        const result = fileManager.loadFolder(folderPath);
+        if (result.success) {
+            audioFiles = result.files;
+            currentFolder = folderPath;
+            updateFolderPath(folderPath);
+            renderFileList();
+            fileCount.textContent = `${result.count} song${result.count !== 1 ? 's' : ''}`;
+            prevBtn.disabled = result.count === 0;
+            nextBtn.disabled = result.count === 0;
+        } else {
+            fileBrowser.innerHTML = `<div class="empty-state">Error loading folder<br><small>${result.error}</small></div>`;
+        }
     } else {
         console.log('No folder path received');
     }
@@ -556,6 +553,10 @@ ipcRenderer.on('folder-selected', (event, folderPath) => {
 // Menu event listeners
 ipcRenderer.on('menu-open-folder', () => {
     browseFolderBtn.click();
+});
+
+ipcRenderer.on('menu-open-settings', () => {
+    openSettingsModal();
 });
 
 ipcRenderer.on('menu-play-pause', () => {
@@ -582,106 +583,117 @@ ipcRenderer.on('menu-repeat', () => {
     repeatBtn.click();
 });
 
+// Settings Modal Functions
+const settingsModal = document.getElementById('settingsModal');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+
+function openSettingsModal() {
+    settingsModal.classList.remove('hidden');
+}
+
+function closeSettingsModal() {
+    settingsModal.classList.add('hidden');
+}
+
+if (closeSettingsBtn) {
+    closeSettingsBtn.addEventListener('click', closeSettingsModal);
+}
+
+// Close on overlay click
+if (settingsModal) {
+    settingsModal.querySelector('.settings-modal-overlay')?.addEventListener('click', closeSettingsModal);
+}
+
+// Close on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
+        closeSettingsModal();
+    }
+});
+
+// Update visualizer tweaks panel
+function updateTweaksPanel() {
+    const tweaksContent = document.getElementById('visualizerTweaksContent');
+    if (!tweaksContent) return;
+
+    const visualizer = visualizerManager.currentVisualizer;
+    if (!visualizer) return;
+
+    const customSettings = visualizer.getCustomSettings();
+
+    if (customSettings.length === 0) {
+        tweaksContent.innerHTML = '<p class="empty-tweaks">No custom settings for this visualizer</p>';
+        return;
+    }
+
+    tweaksContent.innerHTML = '';
+
+    customSettings.forEach(setting => {
+        const settingItem = document.createElement('div');
+        settingItem.className = 'setting-item';
+
+        if (setting.type === 'range') {
+            const label = document.createElement('label');
+            label.innerHTML = `${setting.label}: <span id="tweak${setting.key}Value">${setting.value}</span>`;
+
+            const input = document.createElement('input');
+            input.type = 'range';
+            input.min = setting.min;
+            input.max = setting.max;
+            input.step = setting.step || 1;
+            input.value = setting.value;
+            input.addEventListener('input', (e) => {
+                visualizer.updateSetting(setting.key, parseFloat(e.target.value));
+                document.getElementById(`tweak${setting.key}Value`).textContent = e.target.value;
+            });
+
+            settingItem.appendChild(label);
+            settingItem.appendChild(input);
+        } else if (setting.type === 'select') {
+            const label = document.createElement('label');
+            label.textContent = setting.label + ':';
+
+            const select = document.createElement('select');
+            select.id = `tweak${setting.key}Select`;
+            setting.options.forEach(opt => {
+                const option = document.createElement('option');
+                option.value = opt;
+                option.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+                if (opt === setting.value) option.selected = true;
+                select.appendChild(option);
+            });
+            select.addEventListener('change', (e) => {
+                visualizer.updateSetting(setting.key, e.target.value);
+            });
+
+            settingItem.appendChild(label);
+            settingItem.appendChild(select);
+
+            // Create custom select after appending to DOM
+            setTimeout(() => {
+                createCustomSelect(select);
+            }, 0);
+        } else if (setting.type === 'checkbox') {
+            const label = document.createElement('label');
+            label.className = 'checkbox-label';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = setting.value;
+            checkbox.addEventListener('change', (e) => {
+                visualizer.updateSetting(setting.key, e.target.checked);
+            });
+            const span = document.createElement('span');
+            span.textContent = setting.label;
+            label.appendChild(checkbox);
+            label.appendChild(span);
+            settingItem.appendChild(label);
+        }
+
+        tweaksContent.appendChild(settingItem);
+    });
+}
+
 // Recursively scan folder for audio files
-function scanFolderRecursive(folderPath, audioExtensions) {
-    let files = [];
-
-    try {
-        console.log('Scanning:', folderPath);
-        const items = fs.readdirSync(folderPath);
-        console.log('  Items found:', items.length);
-
-        items.forEach(item => {
-            const fullPath = path.join(folderPath, item);
-
-            try {
-                const stats = fs.statSync(fullPath);
-
-                if (stats.isDirectory()) {
-                    console.log('  [DIR]', item);
-                    // Recursively scan subdirectory only if includeSubfolders is enabled
-                    if (includeSubfolders) {
-                        const subFiles = scanFolderRecursive(fullPath, audioExtensions);
-                        files = files.concat(subFiles);
-                    }
-                } else if (stats.isFile()) {
-                    // Always check files in current directory
-                    const ext = path.extname(item).toLowerCase();
-                    if (audioExtensions.includes(ext)) {
-                        console.log('  [AUDIO]', item);
-                        files.push({
-                            name: item,
-                            path: fullPath,
-                            folder: path.basename(path.dirname(fullPath))
-                        });
-                    } else {
-                        console.log('  [FILE]', item, '(not audio)');
-                    }
-                }
-            } catch (err) {
-                console.warn('Error accessing:', fullPath, err.message);
-            }
-        });
-    } catch (error) {
-        console.error('Error scanning folder:', folderPath, error.message);
-    }
-
-    console.log('  Total audio files from', folderPath, ':', files.length);
-    return files;
-}
-
-// Load folder contents
-function loadFolder(folderPath) {
-    console.log('=== Loading folder ===');
-    console.log('Path:', folderPath);
-    console.log('Include subfolders:', includeSubfolders);
-
-    try {
-        // Check if folder exists
-        if (!fs.existsSync(folderPath)) {
-            throw new Error('Folder does not exist');
-        }
-
-        const audioExtensions = ['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac', '.wma'];
-
-        // Scan folder (with or without subfolders)
-        console.log('Starting scan...');
-        audioFiles = scanFolderRecursive(folderPath, audioExtensions);
-
-        console.log('Scan complete. Found files:', audioFiles.length);
-        if (audioFiles.length > 0) {
-            console.log('First 5 files:', audioFiles.slice(0, 5).map(f => f.name));
-        }
-
-        // Sort alphabetically
-        audioFiles.sort((a, b) => a.name.localeCompare(b.name));
-
-        // Update UI
-        updateFolderPath(folderPath);
-        renderFileList();
-
-        console.log(`Loaded ${audioFiles.length} audio files from ${folderPath}`);
-
-        // Update file count
-        fileCount.textContent = `${audioFiles.length} song${audioFiles.length !== 1 ? 's' : ''}`;
-
-        // Enable prev/next buttons if we have songs
-        prevBtn.disabled = audioFiles.length === 0;
-        nextBtn.disabled = audioFiles.length === 0;
-
-        // Save last opened folder to localStorage
-        localStorage.setItem('lastOpenedFolder', folderPath);
-        console.log('Saved last opened folder:', folderPath);
-
-        if (audioFiles.length === 0) {
-            fileBrowser.innerHTML = '<div class="empty-state">No audio files found in this folder<br><small>Supported: MP3, WAV, OGG, FLAC, M4A, AAC, WMA</small></div>';
-        }
-    } catch (error) {
-        console.error('Error loading folder:', error);
-        fileBrowser.innerHTML = `<div class="empty-state">Error loading folder<br><small>${error.message}</small></div>`;
-    }
-}
-
 // Update folder path display
 function updateFolderPath(folderPathStr) {
     if (!folderPathStr) return;
@@ -702,42 +714,6 @@ function updateFolderPath(folderPathStr) {
     homeSpan.appendChild(textNode);
 
     folderPath.appendChild(homeSpan);
-}
-
-// Parse filename to extract artist and title
-function parseFileName(filename) {
-    // Remove extension
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
-
-    // Common patterns:
-    // "Artist - Song Title"
-    // "Artist-Song Title"
-    // "01 Artist - Song Title"
-    // "01. Artist - Song Title"
-    // "Song Title"
-
-    // Remove leading track numbers (01, 01., 1., etc.)
-    let cleaned = nameWithoutExt.replace(/^\d+[\s.-]*/, '');
-
-    // Try to split by " - " or " – " (em dash)
-    const separators = [' - ', ' – ', ' — '];
-    for (const sep of separators) {
-        if (cleaned.includes(sep)) {
-            const parts = cleaned.split(sep);
-            return {
-                artist: parts[0].trim(),
-                title: parts.slice(1).join(sep).trim(),
-                hasArtist: true
-            };
-        }
-    }
-
-    // No separator found, treat entire name as title
-    return {
-        artist: '',
-        title: cleaned.trim(),
-        hasArtist: false
-    };
 }
 
 // Render file list
@@ -804,15 +780,31 @@ function renderFileList() {
         fileItem.appendChild(contentDiv);
 
         fileItem.addEventListener('click', () => {
+            console.log('File item clicked, index:', index, 'file:', filteredFiles[index]);
             const wasPlaying = isPlaying;
             loadAudioFile(index).then(() => {
+                console.log('loadAudioFile completed successfully');
                 // Auto-play if something was already playing
                 if (wasPlaying) {
                     setTimeout(() => playBtn.click(), 100);
                 }
             }).catch(error => {
                 console.error('Error in file click handler:', error);
-                statusText.textContent = 'Error loading file: ' + error.message;
+
+                // Show user-friendly error message
+                let errorMsg = 'Error loading file';
+                if (error.message.includes('decode')) {
+                    errorMsg = 'Unable to decode audio - file may be corrupted';
+                } else if (error.message.includes('not exist')) {
+                    errorMsg = 'File not found';
+                }
+
+                statusText.textContent = errorMsg;
+
+                // Show alert for corrupted files
+                if (error.message.includes('decode')) {
+                    alert(`Cannot play this file:\n\n${filteredFiles[index].name}\n\nThe file appears to be corrupted or in an unsupported format.`);
+                }
             });
         });
 
@@ -870,6 +862,11 @@ async function loadAudioFile(index) {
         const buffer = fs.readFileSync(file.path);
         console.log('File read successfully, size:', buffer.length, 'bytes');
 
+        // Warn about suspiciously small files (likely corrupted)
+        if (buffer.length < 500000) { // Less than 500KB
+            console.warn('Warning: File is very small (' + buffer.length + ' bytes), may be corrupted');
+        }
+
         const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
         console.log('ArrayBuffer created, byteLength:', arrayBuffer.byteLength);
 
@@ -890,7 +887,7 @@ async function loadAudioFile(index) {
         pauseTime = 0;
 
         // Reset and analyze BPM
-        detectedBPM = 0;
+        bpmDetector.reset();
         updateBPMDisplay();
         analyzeBPM(audioBuffer); // Async analysis in background
 
@@ -903,7 +900,10 @@ async function loadAudioFile(index) {
 
     } catch (error) {
         console.error('Error loading audio:', error);
-        statusText.textContent = 'Error loading file';
+        statusText.textContent = 'Error loading file: ' + error.message;
+        playBtn.disabled = true;
+        pauseBtn.disabled = true;
+        throw error; // Re-throw so the promise chain knows it failed
     }
 }
 
@@ -1046,58 +1046,6 @@ class Visualizer {
 }
 
 // Waveform Visualizer
-class WaveformVisualizer extends Visualizer {
-    constructor() {
-        super('Waveform');
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.timeDomainData = timeDomainData;
-    }
-
-    draw() {
-        // Clear canvas with settings background color
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Set line style from settings
-        this.ctx.lineWidth = settings.lineWidth;
-        this.ctx.strokeStyle = settings.primaryColor;
-        this.ctx.beginPath();
-
-        // Calculate slice width
-        const sliceWidth = this.canvas.width / this.timeDomainData.length;
-        let x = 0;
-
-        // Draw waveform
-        for (let i = 0; i < this.timeDomainData.length; i++) {
-            const v = this.timeDomainData[i] / 255.0;
-            const y = v * this.canvas.height * settings.sensitivity;
-
-            if (i === 0) {
-                this.ctx.moveTo(x, y);
-            } else {
-                this.ctx.lineTo(x, y);
-            }
-
-            x += sliceWidth;
-        }
-
-        this.ctx.lineTo(this.canvas.width, this.canvas.height / 2);
-        this.ctx.stroke();
-
-        // Mirror effect
-        if (settings.mirrorEffect) {
-            this.ctx.save();
-            this.ctx.scale(1, -1);
-            this.ctx.translate(0, -this.canvas.height);
-            this.ctx.globalAlpha = 0.5;
-            this.ctx.drawImage(this.canvas, 0, 0);
-            this.ctx.restore();
-        }
-    }
-}
-
 // Visualizer Manager
 class VisualizerManager {
     constructor() {
@@ -1114,7 +1062,6 @@ class VisualizerManager {
         const visualizer = this.visualizers.get(name);
         if (visualizer) {
             this.currentVisualizer = visualizer;
-            this.currentVisualizer.init(canvas, ctx);
             console.log(`Active visualizer: ${name}`);
             return true;
         }
@@ -1138,531 +1085,6 @@ class VisualizerManager {
     }
 }
 
-// Frequency Bars Visualizer
-class FrequencyBarsVisualizer extends Visualizer {
-    constructor() {
-        super('Frequency Bars');
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.frequencyData = frequencyData;
-    }
-
-    draw() {
-        // Clear canvas with settings background color
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Calculate bar width
-        const barCount = 128;
-        const barWidth = this.canvas.width / barCount;
-
-        // Draw bars
-        for (let i = 0; i < barCount; i++) {
-            const barHeight = (this.frequencyData[i] / 255) * this.canvas.height * settings.sensitivity;
-
-            // Color gradient based on frequency
-            const hue = (i / barCount) * 360;
-            this.ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
-
-            const x = i * barWidth;
-            const y = this.canvas.height - barHeight;
-
-            this.ctx.fillRect(x, y, barWidth - 1, barHeight);
-        }
-    }
-}
-
-// Circular Visualizer
-class CircularVisualizer extends Visualizer {
-    constructor() {
-        super('Circular');
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.timeDomainData = timeDomainData;
-    }
-
-    draw() {
-        // Clear canvas with settings background color
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-        const radius = Math.min(centerX, centerY) - 50;
-
-        // Draw main circular waveform
-        this.drawCircularWave(centerX, centerY, radius, 1);
-
-        // Mirror effect - draw additional mirrored copies
-        if (settings.mirrorEffect) {
-            this.ctx.globalAlpha = 0.6;
-
-            // Draw 4 mirrored copies for kaleidoscope effect
-            this.ctx.save();
-            this.ctx.translate(centerX, centerY);
-
-            for (let i = 1; i <= 3; i++) {
-                this.ctx.rotate(Math.PI / 2);
-                this.ctx.scale(1, -1);
-                this.drawCircularWave(0, 0, radius, 0.8 - i * 0.15);
-                this.ctx.scale(1, -1);
-            }
-
-            this.ctx.restore();
-            this.ctx.globalAlpha = 1;
-        }
-    }
-
-    drawCircularWave(centerX, centerY, radius, alpha) {
-        this.ctx.strokeStyle = settings.primaryColor;
-        this.ctx.lineWidth = settings.lineWidth;
-        this.ctx.globalAlpha = alpha;
-        this.ctx.beginPath();
-
-        const sliceAngle = (Math.PI * 2) / this.timeDomainData.length;
-
-        for (let i = 0; i < this.timeDomainData.length; i++) {
-            const v = this.timeDomainData[i] / 255.0;
-            const amplitude = (v - 0.5) * 100 * settings.sensitivity;
-            const r = radius + amplitude;
-
-            const angle = sliceAngle * i;
-            const x = centerX + r * Math.cos(angle);
-            const y = centerY + r * Math.sin(angle);
-
-            if (i === 0) {
-                this.ctx.moveTo(x, y);
-            } else {
-                this.ctx.lineTo(x, y);
-            }
-        }
-
-        this.ctx.closePath();
-        this.ctx.stroke();
-        this.ctx.globalAlpha = 1;
-    }
-}
-
-// Particle Visualizer
-class ParticleVisualizer extends Visualizer {
-    constructor() {
-        super('Particles');
-        this.particles = [];
-        this.settings = { particleCount: 150, speed: 1.5, trailLength: 0.15 };
-    }
-
-    getCustomSettings() {
-        return [
-            { key: 'particleCount', label: 'Particle Count', type: 'range', min: 50, max: 300, value: 150 },
-            { key: 'speed', label: 'Speed', type: 'range', min: 0.5, max: 3, value: 1.5, step: 0.1 },
-            { key: 'trailLength', label: 'Trail Length', type: 'range', min: 0.05, max: 0.5, value: 0.15, step: 0.05 }
-        ];
-    }
-
-    init(canvas, ctx) {
-        super.init(canvas, ctx);
-        this.initParticles();
-    }
-
-    initParticles() {
-        this.particles = [];
-        const count = this.settings.particleCount || 150;
-        for (let i = 0; i < count; i++) {
-            this.particles.push({
-                x: Math.random() * this.canvas.width,
-                y: Math.random() * this.canvas.height,
-                vx: (Math.random() - 0.5) * 3,
-                vy: (Math.random() - 0.5) * 3,
-                size: Math.random() * 2 + 1,
-                baseSpeed: Math.random() * 0.5 + 0.5
-            });
-        }
-    }
-
-    updateSetting(key, value) {
-        super.updateSetting(key, value);
-        if (key === 'particleCount' && this.canvas) {
-            this.initParticles();
-        }
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.frequencyData = frequencyData;
-        this.timeDomainData = timeDomainData;
-
-        // Calculate average amplitude from frequency data (bass heavy)
-        let bassSum = 0;
-        let midSum = 0;
-        let trebleSum = 0;
-
-        const bassEnd = Math.floor(frequencyData.length * 0.1);
-        const midEnd = Math.floor(frequencyData.length * 0.4);
-
-        for (let i = 0; i < bassEnd; i++) {
-            bassSum += frequencyData[i];
-        }
-        for (let i = bassEnd; i < midEnd; i++) {
-            midSum += frequencyData[i];
-        }
-        for (let i = midEnd; i < frequencyData.length; i++) {
-            trebleSum += frequencyData[i];
-        }
-
-        this.bassEnergy = (bassSum / bassEnd) / 255;
-        this.midEnergy = (midSum / (midEnd - bassEnd)) / 255;
-        this.trebleEnergy = (trebleSum / (frequencyData.length - midEnd)) / 255;
-        this.avgAmplitude = (bassSum + midSum + trebleSum) / frequencyData.length;
-    }
-
-    draw() {
-        if (!this.canvas) return;
-
-        // Fade effect with adjustable trail length
-        const bgColor = settings.bgColor;
-        const rgb = parseInt(bgColor.slice(1), 16);
-        const r = (rgb >> 16) & 255;
-        const g = (rgb >> 8) & 255;
-        const b = rgb & 255;
-        const trailAlpha = this.settings.trailLength || 0.15;
-        this.ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${trailAlpha})`;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Calculate energy with better scaling
-        const energy = Math.min((this.avgAmplitude / 128) * settings.sensitivity, 3);
-        const bassBoost = this.bassEnergy * 2;
-
-        this.particles.forEach((particle, index) => {
-            // Different particles react to different frequencies
-            const freqIndex = Math.floor((index / this.particles.length) * 3);
-            let particleEnergy = energy;
-
-            if (freqIndex === 0) particleEnergy *= (1 + this.bassEnergy * 2);
-            else if (freqIndex === 1) particleEnergy *= (1 + this.midEnergy);
-            else particleEnergy *= (1 + this.trebleEnergy);
-
-            // Move particle with energy influence
-            const speedMultiplier = this.settings.speed || 1.5;
-            particle.x += particle.vx * particle.baseSpeed * speedMultiplier * (1 + particleEnergy);
-            particle.y += particle.vy * particle.baseSpeed * speedMultiplier * (1 + particleEnergy);
-
-            // Wrap around edges
-            if (particle.x < 0) particle.x = this.canvas.width;
-            if (particle.x > this.canvas.width) particle.x = 0;
-            if (particle.y < 0) particle.y = this.canvas.height;
-            if (particle.y > this.canvas.height) particle.y = 0;
-
-            // Draw particle with energy-based size and color
-            const particleSize = particle.size * (1 + particleEnergy * 0.5);
-
-            // Color varies based on energy
-            const primaryRgb = parseInt(settings.primaryColor.slice(1), 16);
-            const pr = (primaryRgb >> 16) & 255;
-            const pg = (primaryRgb >> 8) & 255;
-            const pb = primaryRgb & 255;
-
-            // Add energy-based color variation
-            const colorR = Math.min(255, pr + particleEnergy * 50);
-            const colorG = Math.min(255, pg + particleEnergy * 30);
-            const colorB = Math.min(255, pb + particleEnergy * 20);
-
-            this.ctx.fillStyle = `rgba(${colorR}, ${colorG}, ${colorB}, ${0.6 + particleEnergy * 0.4})`;
-            this.ctx.beginPath();
-            this.ctx.arc(particle.x, particle.y, particleSize, 0, Math.PI * 2);
-            this.ctx.fill();
-
-            // Add glow effect on high energy
-            if (particleEnergy > 1) {
-                this.ctx.shadowBlur = 10 * particleEnergy;
-                this.ctx.shadowColor = settings.primaryColor;
-                this.ctx.beginPath();
-                this.ctx.arc(particle.x, particle.y, particleSize, 0, Math.PI * 2);
-                this.ctx.fill();
-                this.ctx.shadowBlur = 0;
-            }
-        });
-    }
-}
-
-// Spectrum Analyzer Visualizer
-class SpectrumVisualizer extends Visualizer {
-    constructor() {
-        super('Spectrum');
-        this.settings = { barGap: 2, barStyle: 'gradient' };
-    }
-
-    getCustomSettings() {
-        return [
-            { key: 'barGap', label: 'Bar Gap', type: 'range', min: 0, max: 10, value: 2 },
-            { key: 'barStyle', label: 'Bar Style', type: 'select', options: ['solid', 'gradient', 'glow'], value: 'gradient' }
-        ];
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.frequencyData = frequencyData;
-    }
-
-    draw() {
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        const barCount = 64;
-        const barWidth = (this.canvas.width / barCount) - this.settings.barGap;
-
-        for (let i = 0; i < barCount; i++) {
-            const barHeight = (this.frequencyData[i] / 255) * this.canvas.height * settings.sensitivity;
-            const x = i * (barWidth + this.settings.barGap);
-            const y = this.canvas.height - barHeight;
-
-            if (this.settings.barStyle === 'gradient') {
-                const gradient = this.ctx.createLinearGradient(x, y, x, this.canvas.height);
-                gradient.addColorStop(0, settings.primaryColor);
-                gradient.addColorStop(1, settings.bgColor);
-                this.ctx.fillStyle = gradient;
-            } else if (this.settings.barStyle === 'glow') {
-                this.ctx.shadowBlur = 20;
-                this.ctx.shadowColor = settings.primaryColor;
-                this.ctx.fillStyle = settings.primaryColor;
-            } else {
-                this.ctx.fillStyle = settings.primaryColor;
-            }
-
-            this.ctx.fillRect(x, y, barWidth, barHeight);
-            this.ctx.shadowBlur = 0;
-        }
-    }
-}
-
-// Radial Bars Visualizer
-class RadialBarsVisualizer extends Visualizer {
-    constructor() {
-        super('Radial Bars');
-        this.settings = { barCount: 64, rotation: 0 };
-    }
-
-    getCustomSettings() {
-        return [
-            { key: 'barCount', label: 'Bar Count', type: 'range', min: 32, max: 128, value: 64 },
-            { key: 'rotation', label: 'Rotation', type: 'range', min: 0, max: 360, value: 0 }
-        ];
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.frequencyData = frequencyData;
-    }
-
-    draw() {
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-        const radius = Math.min(centerX, centerY) * 0.3;
-
-        // Draw main radial bars
-        this.drawRadialBars(centerX, centerY, radius, 1);
-
-        // Mirror effect - draw inverted bars
-        if (settings.mirrorEffect) {
-            this.ctx.globalAlpha = 0.5;
-            // Draw bars going inward instead of outward
-            this.drawRadialBarsInverted(centerX, centerY, radius);
-            this.ctx.globalAlpha = 1;
-        }
-    }
-
-    drawRadialBars(centerX, centerY, radius, alpha) {
-        const barCount = this.settings.barCount;
-        this.ctx.globalAlpha = alpha;
-
-        for (let i = 0; i < barCount; i++) {
-            const angle = (i / barCount) * Math.PI * 2 + (this.settings.rotation * Math.PI / 180);
-            const barHeight = (this.frequencyData[Math.floor(i * this.frequencyData.length / barCount)] / 255) * radius * settings.sensitivity;
-
-            const x1 = centerX + Math.cos(angle) * radius;
-            const y1 = centerY + Math.sin(angle) * radius;
-            const x2 = centerX + Math.cos(angle) * (radius + barHeight);
-            const y2 = centerY + Math.sin(angle) * (radius + barHeight);
-
-            this.ctx.strokeStyle = settings.primaryColor;
-            this.ctx.lineWidth = settings.lineWidth;
-            this.ctx.beginPath();
-            this.ctx.moveTo(x1, y1);
-            this.ctx.lineTo(x2, y2);
-            this.ctx.stroke();
-        }
-        this.ctx.globalAlpha = 1;
-    }
-
-    drawRadialBarsInverted(centerX, centerY, radius) {
-        const barCount = this.settings.barCount;
-
-        for (let i = 0; i < barCount; i++) {
-            const angle = (i / barCount) * Math.PI * 2 + (this.settings.rotation * Math.PI / 180);
-            const barHeight = (this.frequencyData[Math.floor(i * this.frequencyData.length / barCount)] / 255) * radius * settings.sensitivity;
-
-            const x1 = centerX + Math.cos(angle) * radius;
-            const y1 = centerY + Math.sin(angle) * radius;
-            const x2 = centerX + Math.cos(angle) * (radius - barHeight * 0.7);
-            const y2 = centerY + Math.sin(angle) * (radius - barHeight * 0.7);
-
-            this.ctx.strokeStyle = settings.primaryColor;
-            this.ctx.lineWidth = settings.lineWidth;
-            this.ctx.beginPath();
-            this.ctx.moveTo(x1, y1);
-            this.ctx.lineTo(x2, y2);
-            this.ctx.stroke();
-        }
-    }
-}
-
-// Wave Rings Visualizer
-class WaveRingsVisualizer extends Visualizer {
-    constructor() {
-        super('Wave Rings');
-        this.settings = { ringCount: 5, ringSpacing: 30 };
-    }
-
-    getCustomSettings() {
-        return [
-            { key: 'ringCount', label: 'Ring Count', type: 'range', min: 3, max: 10, value: 5 },
-            { key: 'ringSpacing', label: 'Ring Spacing', type: 'range', min: 20, max: 60, value: 30 }
-        ];
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.timeDomainData = timeDomainData;
-    }
-
-    draw() {
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
-
-        // Draw main rings
-        this.drawRings(centerX, centerY, 1, false);
-
-        // Mirror effect - draw inverted amplitude rings
-        if (settings.mirrorEffect) {
-            this.ctx.globalAlpha = 0.5;
-            this.drawRings(centerX, centerY, 0.6, true);
-            this.ctx.globalAlpha = 1;
-        }
-    }
-
-    drawRings(centerX, centerY, amplitudeScale, inverted) {
-        for (let ring = 0; ring < this.settings.ringCount; ring++) {
-            const baseRadius = (ring + 1) * this.settings.ringSpacing;
-
-            this.ctx.strokeStyle = settings.primaryColor;
-            this.ctx.lineWidth = settings.lineWidth;
-            this.ctx.globalAlpha = (1 - (ring / this.settings.ringCount) * 0.5) * (inverted ? 0.5 : 1);
-            this.ctx.beginPath();
-
-            const points = 100;
-            for (let i = 0; i <= points; i++) {
-                const angle = (i / points) * Math.PI * 2;
-                const dataIndex = Math.floor((i / points) * this.timeDomainData.length);
-                let amplitude = ((this.timeDomainData[dataIndex] / 255) - 0.5) * 50 * settings.sensitivity * amplitudeScale;
-
-                // Invert amplitude for mirror effect
-                if (inverted) {
-                    amplitude = -amplitude;
-                }
-
-                const radius = baseRadius + amplitude;
-
-                const x = centerX + Math.cos(angle) * radius;
-                const y = centerY + Math.sin(angle) * radius;
-
-                if (i === 0) {
-                    this.ctx.moveTo(x, y);
-                } else {
-                    this.ctx.lineTo(x, y);
-                }
-            }
-
-            this.ctx.closePath();
-            this.ctx.stroke();
-        }
-        this.ctx.globalAlpha = 1;
-    }
-}
-
-// Oscilloscope Visualizer
-class OscilloscopeVisualizer extends Visualizer {
-    constructor() {
-        super('Oscilloscope');
-        this.settings = { gridLines: true, thickness: 2 };
-    }
-
-    getCustomSettings() {
-        return [
-            { key: 'gridLines', label: 'Grid Lines', type: 'checkbox', value: true },
-            { key: 'thickness', label: 'Line Thickness', type: 'range', min: 1, max: 5, value: 2 }
-        ];
-    }
-
-    update(timeDomainData, frequencyData) {
-        this.timeDomainData = timeDomainData;
-    }
-
-    draw() {
-        this.ctx.fillStyle = settings.bgColor;
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-
-        // Draw grid
-        if (this.settings.gridLines) {
-            this.ctx.strokeStyle = '#333';
-            this.ctx.lineWidth = 1;
-
-            // Horizontal lines
-            for (let i = 0; i <= 4; i++) {
-                const y = (this.canvas.height / 4) * i;
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, y);
-                this.ctx.lineTo(this.canvas.width, y);
-                this.ctx.stroke();
-            }
-
-            // Vertical lines
-            for (let i = 0; i <= 8; i++) {
-                const x = (this.canvas.width / 8) * i;
-                this.ctx.beginPath();
-                this.ctx.moveTo(x, 0);
-                this.ctx.lineTo(x, this.canvas.height);
-                this.ctx.stroke();
-            }
-        }
-
-        // Draw waveform
-        this.ctx.strokeStyle = settings.primaryColor;
-        this.ctx.lineWidth = this.settings.thickness;
-        this.ctx.beginPath();
-
-        const sliceWidth = this.canvas.width / this.timeDomainData.length;
-        let x = 0;
-
-        for (let i = 0; i < this.timeDomainData.length; i++) {
-            const v = this.timeDomainData[i] / 255.0;
-            const y = v * this.canvas.height;
-
-            if (i === 0) {
-                this.ctx.moveTo(x, y);
-            } else {
-                this.ctx.lineTo(x, y);
-            }
-
-            x += sliceWidth;
-        }
-
-        this.ctx.stroke();
-    }
-}
-
 // Create visualizer manager and register visualizers
 const visualizerManager = new VisualizerManager();
 visualizerManager.register(new WaveformVisualizer());
@@ -1673,6 +1095,15 @@ visualizerManager.register(new SpectrumVisualizer());
 visualizerManager.register(new RadialBarsVisualizer());
 visualizerManager.register(new WaveRingsVisualizer());
 visualizerManager.register(new OscilloscopeVisualizer());
+visualizerManager.register(new KaleidoscopeVisualizer());
+visualizerManager.register(new DnaHelixVisualizer());
+visualizerManager.register(new StarfieldVisualizer());
+visualizerManager.register(new TunnelVisualizer());
+visualizerManager.register(new FireworksVisualizer());
+
+// Initialize all visualizers with canvas context
+visualizerManager.visualizers.forEach(viz => viz.init(canvas, ctx));
+
 visualizerManager.setActive('Waveform');
 
 // Populate visualizer dropdown now that they're registered
@@ -1719,6 +1150,12 @@ visualizerSelect.addEventListener('change', (event) => {
 
 // Update custom settings panel for current visualizer
 function updateCustomSettings() {
+    // Update both modal and tweaks panel
+    updateModalCustomSettings();
+    updateTweaksPanel();
+}
+
+function updateModalCustomSettings() {
     const customSettingsContainer = document.getElementById('customSettings');
     if (!customSettingsContainer) return;
 
@@ -1761,7 +1198,7 @@ function updateCustomSettings() {
             label.textContent = setting.label + ':';
 
             const select = document.createElement('select');
-            select.style.cssText = 'background: #1a1a1a; color: #fff; border: 1px solid #444; padding: 5px; border-radius: 3px; width: 100%;';
+            select.id = `modal${setting.key}Select`;
             setting.options.forEach(opt => {
                 const option = document.createElement('option');
                 option.value = opt;
@@ -1775,6 +1212,11 @@ function updateCustomSettings() {
 
             settingItem.appendChild(label);
             settingItem.appendChild(select);
+
+            // Create custom select after appending to DOM
+            setTimeout(() => {
+                createCustomSelect(select);
+            }, 0);
         } else if (setting.type === 'checkbox') {
             const label = document.createElement('label');
             const checkbox = document.createElement('input');
@@ -1802,7 +1244,7 @@ function populateVisualizerSelect() {
         option.textContent = name;
         visualizerSelect.appendChild(option);
     });
-    
+
     // Initialize custom select
     initCustomVisualizerSelect();
 }
@@ -1812,66 +1254,71 @@ function createCustomSelect(selectElement) {
     // Create custom select wrapper
     const customSelect = document.createElement('div');
     customSelect.className = 'custom-select';
-    
+
+    // Check if this select should open upwards
+    if (selectElement.classList.contains('dropdown-up')) {
+        customSelect.classList.add('dropdown-up');
+    }
+
     // Create trigger
     const trigger = document.createElement('div');
     trigger.className = 'custom-select-trigger';
     trigger.textContent = selectElement.options[selectElement.selectedIndex]?.text || selectElement.value;
-    
+
     // Create options container
     const optionsContainer = document.createElement('div');
     optionsContainer.className = 'custom-select-options';
-    
+
     // Populate options
     Array.from(selectElement.options).forEach((option, index) => {
         const customOption = document.createElement('div');
         customOption.className = 'custom-select-option';
         customOption.textContent = option.text;
         customOption.dataset.value = option.value;
-        
+
         if (option.selected) {
             customOption.classList.add('selected');
         }
-        
+
         // Click handler
         customOption.addEventListener('click', () => {
             // Update native select
             selectElement.selectedIndex = index;
             selectElement.dispatchEvent(new Event('change'));
-            
+
             // Update trigger
             trigger.textContent = option.text;
-            
+
             // Update selected class
             optionsContainer.querySelectorAll('.custom-select-option').forEach(opt => {
                 opt.classList.remove('selected');
             });
             customOption.classList.add('selected');
-            
+
             // Close dropdown
             customSelect.classList.remove('open');
         });
-        
+
         optionsContainer.appendChild(customOption);
     });
-    
+
     // Toggle dropdown
     trigger.addEventListener('click', (e) => {
         e.stopPropagation();
         customSelect.classList.toggle('open');
     });
-    
+
     // Close on outside click
     document.addEventListener('click', (e) => {
         if (!customSelect.contains(e.target)) {
             customSelect.classList.remove('open');
         }
     });
-    
+
     // Assemble
     customSelect.appendChild(trigger);
     customSelect.appendChild(optionsContainer);
-    
+
     // Insert after native select
     selectElement.parentNode.insertBefore(customSelect, selectElement.nextSibling);
 }
@@ -1933,6 +1380,16 @@ mirrorEffectInput.addEventListener('change', (e) => {
     saveSettings();
 });
 
+// GPU Acceleration setting
+const gpuAccelerationInput = document.getElementById('gpuAcceleration');
+if (gpuAccelerationInput) {
+    gpuAccelerationInput.addEventListener('change', (e) => {
+        settings.gpuAcceleration = e.target.checked;
+        applyGPUAcceleration(e.target.checked);
+        saveSettings();
+    });
+}
+
 // Beat detection settings
 const beatDetectionInput = document.getElementById('beatDetection');
 const beatFlashInput = document.getElementById('beatFlash');
@@ -1955,6 +1412,29 @@ beatDurationInput.addEventListener('input', (e) => {
     saveSettings();
 });
 
+// Apply or remove GPU acceleration
+function applyGPUAcceleration(enabled) {
+    if (enabled) {
+        canvas.style.transform = 'translateZ(0) scale(1)';
+        canvas.style.willChange = 'transform, contents';
+        canvas.style.backfaceVisibility = 'hidden';
+        canvas.style.webkitBackfaceVisibility = 'hidden';
+        canvas.style.imageRendering = 'auto';
+        canvas.style.webkitTransform = 'translateZ(0)';
+        // Force hardware acceleration
+        canvas.style.perspective = '1000px';
+    } else {
+        canvas.style.transform = '';
+        canvas.style.willChange = '';
+        canvas.style.backfaceVisibility = '';
+        canvas.style.webkitBackfaceVisibility = '';
+        canvas.style.imageRendering = '';
+        canvas.style.webkitTransform = '';
+        canvas.style.perspective = '';
+    }
+    console.log('GPU Acceleration:', enabled ? 'enabled' : 'disabled');
+}
+
 // Save settings to localStorage
 function saveSettings() {
     localStorage.setItem('audioVisualizerSettings', JSON.stringify(settings));
@@ -1967,40 +1447,50 @@ function loadSettings() {
     if (saved) {
         const loaded = JSON.parse(saved);
         Object.assign(settings, loaded);
-
-        // Update UI
-        primaryColorInput.value = settings.primaryColor;
-        document.getElementById('colorValue').textContent = settings.primaryColor;
-
-        lineWidthInput.value = settings.lineWidth;
-        document.getElementById('lineWidthValue').textContent = settings.lineWidth;
-
-        smoothingInput.value = settings.smoothing * 100;
-        document.getElementById('smoothingValue').textContent = settings.smoothing.toFixed(2);
-        analyser.smoothingTimeConstant = settings.smoothing;
-
-        sensitivityInput.value = settings.sensitivity * 100;
-        document.getElementById('sensitivityValue').textContent = settings.sensitivity.toFixed(2);
-
-        bgColorInput.value = settings.bgColor;
-        document.getElementById('bgColorValue').textContent = settings.bgColor;
-
-        mirrorEffectInput.checked = settings.mirrorEffect;
-
-        // Beat detection settings
-        if (beatDetectionInput) {
-            beatDetectionInput.checked = settings.beatDetection !== false;
-            beatFlashInput.value = settings.beatFlashIntensity || 0.3;
-            document.getElementById('beatFlashValue').textContent = (settings.beatFlashIntensity || 0.3).toFixed(2);
-            beatDurationInput.value = settings.beatFlashDuration || 0.92;
-            document.getElementById('beatDurationValue').textContent = (settings.beatFlashDuration || 0.92).toFixed(2);
-        }
-
-        console.log('Settings loaded:', settings);
     }
+
+    // Update UI
+    primaryColorInput.value = settings.primaryColor;
+    document.getElementById('colorValue').textContent = settings.primaryColor;
+
+    lineWidthInput.value = settings.lineWidth;
+    document.getElementById('lineWidthValue').textContent = settings.lineWidth;
+
+    smoothingInput.value = settings.smoothing * 100;
+    document.getElementById('smoothingValue').textContent = settings.smoothing.toFixed(2);
+    analyser.smoothingTimeConstant = settings.smoothing;
+
+    sensitivityInput.value = settings.sensitivity * 100;
+    document.getElementById('sensitivityValue').textContent = settings.sensitivity.toFixed(2);
+
+    bgColorInput.value = settings.bgColor;
+    document.getElementById('bgColorValue').textContent = settings.bgColor;
+
+    mirrorEffectInput.checked = settings.mirrorEffect;
+
+    // GPU Acceleration setting
+    if (gpuAccelerationInput) {
+        const gpuEnabled = settings.gpuAcceleration !== false;
+        gpuAccelerationInput.checked = gpuEnabled;
+        applyGPUAcceleration(gpuEnabled);
+    }
+
+    // Beat detection settings
+    if (beatDetectionInput) {
+        beatDetectionInput.checked = settings.beatDetection !== false;
+        beatFlashInput.value = settings.beatFlashIntensity || 0.3;
+        document.getElementById('beatFlashValue').textContent = (settings.beatFlashIntensity || 0.3).toFixed(2);
+        beatDurationInput.value = settings.beatFlashDuration || 0.92;
+        document.getElementById('beatDurationValue').textContent = (settings.beatFlashDuration || 0.92).toFixed(2);
+    }
+
+    console.log('Settings loaded:', settings);
 }
 
 loadSettings();
+
+// Apply GPU acceleration on startup (even if setting doesn't exist yet)
+applyGPUAcceleration(settings.gpuAcceleration !== false);
 
 // Load last opened folder on startup (deferred to improve startup time)
 setTimeout(() => {
@@ -2239,7 +1729,8 @@ ipcRenderer.on('spotify-playlist-tracks-received', (event, data) => {
 // Listen for track features (BPM)
 ipcRenderer.on('spotify-track-features-received', (event, data) => {
     if (data.features && data.features.tempo) {
-        detectedBPM = Math.round(data.features.tempo);
+        bpmDetector.setBPM(data.features.tempo);
+        detectedBPM = bpmDetector.getBPM(); // Sync for backward compatibility
         updateBPMDisplay();
         console.log('Spotify track BPM:', detectedBPM);
     }

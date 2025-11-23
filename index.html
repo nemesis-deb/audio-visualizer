@@ -2,10 +2,11 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Visualizer</title>
+  <title>Spectra</title>
   <link rel="stylesheet" href="src/styles.css">
 </head>
 <body>
+  <div class="app-container">
   <!-- Sidebar with File Navigator -->
   <div class="sidebar">
     <div class="sidebar-header">
@@ -64,6 +65,10 @@
 
   <!-- Main Content Area -->
   <div class="main-content">
+    
+    <div class="content-wrapper">
+      
+    <!-- Audio Controls at Top (full width) -->
     <div class="header">
       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00ff88" stroke-width="2">
         <path d="M9 18V5l12-2v13"/>
@@ -74,6 +79,17 @@
         <div class="now-playing-title" id="nowPlayingTitle">No song playing</div>
         <div class="now-playing-artist" id="nowPlayingArtist"></div>
       </div>
+      <button id="queueBtn" class="queue-btn" title="Queue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="8" y1="6" x2="21" y2="6"/>
+          <line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/>
+          <line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        <span>Queue</span>
+      </button>
     </div>
 
     <!-- Controls Bar -->
@@ -133,13 +149,6 @@
       
       <div class="divider"></div>
       
-      <div class="control-group">
-        <label>Visualizer:</label>
-        <select id="visualizerSelect">
-          <option value="Waveform">Waveform</option>
-        </select>
-      </div>
-      
       <div class="control-group volume-control">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
@@ -161,28 +170,48 @@
         </select>
       </div>
       
-      <div class="control-group">
-        <button id="queueBtn" class="icon-btn" title="Show Queue">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="8" y1="6" x2="21" y2="6"/>
-            <line x1="8" y1="12" x2="21" y2="12"/>
-            <line x1="8" y1="18" x2="21" y2="18"/>
-            <line x1="3" y1="6" x2="3.01" y2="6"/>
-            <line x1="3" y1="12" x2="3.01" y2="12"/>
-            <line x1="3" y1="18" x2="3.01" y2="18"/>
-          </svg>
-        </button>
-        <button id="settingsToggle" class="icon-btn" title="Settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
-          </svg>
-        </button>
-      </div>
-      
-      <span id="status">No audio source</span>
       <span id="bpmDisplay" style="display: inline; color: #00ff88; font-weight: 600; margin-left: 15px; padding: 4px 8px; background: rgba(0, 255, 136, 0.1); border-radius: 3px;">-- BPM</span>
     </div>
+    
+    <!-- Bottom Section: Canvas + Right Panel -->
+    <div class="bottom-section">
+      
+      <!-- Canvas Container (center) -->
+      <div class="canvas-container">
+        <canvas id="visualizer" width="1200" height="600"></canvas>
+      </div>
+      
+      <!-- Visualizer Panel (right side) -->
+      <div class="right-panel" id="rightPanel">
+        <div class="right-panel-header">
+          <h3>Visualizer</h3>
+        </div>
+        
+        <div class="right-panel-section">
+          <label>Type</label>
+          <select id="visualizerSelect">
+            <option value="Waveform">Waveform</option>
+          </select>
+        </div>
+        
+        <div class="right-panel-section" id="visualizerTweaksPanel">
+          <label>Settings</label>
+          <div class="tweaks-content" id="visualizerTweaksContent">
+            <p class="empty-tweaks">No custom settings</p>
+          </div>
+        </div>
+        
+        <!-- Status at bottom -->
+        <div class="right-panel-footer">
+          <span id="status">No audio source</span>
+        </div>
+      </div>
+      
+    </div> <!-- end bottom-section -->
+    
+    </div> <!-- end content-wrapper -->
+    
+  </div> <!-- end main-content -->
     
     <!-- Queue Panel -->
     <div class="queue-panel hidden" id="queuePanel">
@@ -195,7 +224,102 @@
       </div>
     </div>
 
-    <!-- Settings Panel -->
+    <!-- Settings Modal -->
+    <div class="settings-modal hidden" id="settingsModal">
+      <div class="settings-modal-overlay"></div>
+      <div class="settings-modal-content">
+        <div class="settings-modal-header">
+          <h2>Settings</h2>
+          <button class="icon-btn" id="closeSettingsBtn" title="Close">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div class="settings-modal-body">
+          <div class="settings-section">
+            <h3>Appearance</h3>
+            <div class="settings-grid">
+              <div class="setting-item">
+                <label>Primary Color</label>
+                <div class="setting-control">
+                  <input type="color" id="primaryColor" value="#00ff88">
+                  <span id="colorValue">#00ff88</span>
+                </div>
+              </div>
+              <div class="setting-item">
+                <label>Background Color</label>
+                <div class="setting-control">
+                  <input type="color" id="bgColor" value="#000000">
+                  <span id="bgColorValue">#000000</span>
+                </div>
+              </div>
+              <div class="setting-item">
+                <label>Line Width: <span id="lineWidthValue">2</span></label>
+                <input type="range" id="lineWidth" min="1" max="10" value="2">
+              </div>
+              <div class="setting-item">
+                <label>Smoothing: <span id="smoothingValue">0.8</span></label>
+                <input type="range" id="smoothing" min="0" max="100" value="80">
+              </div>
+              <div class="setting-item">
+                <label>Sensitivity: <span id="sensitivityValue">1.0</span></label>
+                <input type="range" id="sensitivity" min="50" max="200" value="100">
+              </div>
+              <div class="setting-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="mirrorEffect">
+                  <span>Mirror Effect</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Performance</h3>
+            <div class="settings-grid">
+              <div class="setting-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="gpuAcceleration" checked>
+                  <span>GPU Acceleration</span>
+                </label>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Enable hardware acceleration for smoother visuals</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h3>Beat Detection</h3>
+            <div class="settings-grid">
+              <div class="setting-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="beatDetection" checked>
+                  <span>Enable Beat Flashing</span>
+                </label>
+              </div>
+              <div class="setting-item">
+                <label>Flash Intensity: <span id="beatFlashValue">0.3</span></label>
+                <input type="range" id="beatFlash" min="0" max="1" step="0.05" value="0.3">
+              </div>
+              <div class="setting-item">
+                <label>Flash Duration: <span id="beatDurationValue">0.92</span></label>
+                <input type="range" id="beatDuration" min="0.85" max="0.98" step="0.01" value="0.92">
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section" id="customSettingsSection" style="display: none;">
+            <h3 id="customSettingsTitle">Visualizer Settings</h3>
+            <div class="settings-grid" id="customSettings">
+              <!-- Custom settings will be populated here -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Old settings panel for compatibility -->
     <div class="settings-panel hidden" id="settingsPanel">
       <h4 style="margin: 0 0 15px 0; color: #00ff88; display: flex; align-items: center; gap: 8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -255,13 +379,10 @@
       </div>
     </div>
 
-    <!-- Canvas Container -->
-    <div class="canvas-container">
-      <canvas id="visualizer" width="1200" height="600"></canvas>
     </div>
   </div>
 
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
-  <script src="src/js/renderer.js"></script>
+  <script type="module" src="src/js/renderer.js"></script>
 </body>
 </html>

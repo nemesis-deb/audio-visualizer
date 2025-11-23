@@ -1,10 +1,10 @@
 {
-  "name": "audio-visualizer",
+  "name": "spectra",
   "version": "1.0.0",
   "description": "A beautiful audio visualizer app with multiple visualization modes and customization options.",
   "main": "main.js",
   "scripts": {
-    "start": "electron . --no-sandbox --disable-gpu",
+    "start": "electron . --no-sandbox",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
@@ -18,8 +18,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.audiovisualizer.app",
-    "productName": "Audio Visualizer",
+    "appId": "com.spectra.app",
+    "productName": "Spectra",
     "directories": {
       "output": "dist"
     },
@@ -63,6 +63,7 @@
     "@electron/remote": "^2.1.3",
     "discord-rpc": "^4.0.1",
     "spotify-web-api-node": "^5.0.2",
+    "three": "^0.181.2",
     "web-audio-beat-detector": "^8.2.31"
   }
 }
