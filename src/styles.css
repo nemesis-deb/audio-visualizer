@@ -496,32 +496,10 @@ select {
   background: #1a1a1a;
   color: #fff;
   border: 1px solid #444;
-  padding: 10px 16px;
+  padding: 8px 12px;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 15px;
-  transition: all 0.2s;
-}
-
-select:hover {
-  background: #252525;
-  border-color: #00ff88;
-}
-
-select:focus {
-  border-color: #00ff88;
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
-}
-
-/* Attempt to style select options (limited browser support) */
-select option {
-  padding: 14px 16px;
-  font-size: 15px;
-  background: #2a2a2a;
-  color: #fff;
-  min-height: 45px;
-  line-height: 1.6;
+  font-size: 14px;
 }
 
 /* Canvas */
