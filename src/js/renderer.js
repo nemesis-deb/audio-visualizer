@@ -2274,19 +2274,31 @@ const savedAccessToken = localStorage.getItem('spotifyAccessToken');
 const savedUser = localStorage.getItem('spotifyUser');
 
 if (savedAccessToken && savedUser) {
-    spotifyAccessToken = savedAccessToken;
-    const user = JSON.parse(savedUser);
+    try {
+        spotifyAccessToken = savedAccessToken;
+        const user = JSON.parse(savedUser);
 
-    spotifyLogin.classList.add('hidden');
-    spotifyConnected.classList.remove('hidden');
-    spotifyUsername.textContent = user.display_name || user.id;
+        spotifyLogin.classList.add('hidden');
+        spotifyConnected.classList.remove('hidden');
+        spotifyUsername.textContent = user.display_name || user.id;
 
-    console.log('Restored Spotify session for:', user.display_name || user.id);
+        console.log('Restored Spotify session for:', user.display_name || user.id);
 
-    // Initialize the Spotify Web Playback SDK
-    setTimeout(() => {
-        initSpotifyPlayer(savedAccessToken);
-    }, 1000); // Wait for SDK to load
+        // Initialize the Spotify Web Playback SDK (non-blocking)
+        setTimeout(() => {
+            try {
+                initSpotifyPlayer(savedAccessToken);
+            } catch (error) {
+                console.error('Error initializing Spotify player:', error);
+            }
+        }, 1000); // Wait for SDK to load
+    } catch (error) {
+        console.error('Error restoring Spotify session:', error);
+        // Clear invalid tokens
+        localStorage.removeItem('spotifyAccessToken');
+        localStorage.removeItem('spotifyRefreshToken');
+        localStorage.removeItem('spotifyUser');
+    }
 }
 
 console.log('Spotify integration loaded');
