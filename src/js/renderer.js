@@ -212,10 +212,10 @@ function updateBPMDisplay() {
 function updateNowPlaying(filename) {
     const nowPlayingTitle = document.getElementById('nowPlayingTitle');
     const nowPlayingArtist = document.getElementById('nowPlayingArtist');
-    
+
     if (nowPlayingTitle && nowPlayingArtist) {
         const parsed = parseFileName(filename);
-        
+
         if (parsed.hasArtist) {
             nowPlayingTitle.textContent = parsed.title;
             nowPlayingArtist.textContent = parsed.artist;
