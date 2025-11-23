@@ -390,6 +390,9 @@ speedSelect.addEventListener('change', (e) => {
     console.log('Playback speed:', playbackRate);
 });
 
+// Initialize custom speed select
+createCustomSelect(speedSelect);
+
 // Queue panel toggle
 if (queueBtn) {
     queueBtn.addEventListener('click', () => {
@@ -1799,6 +1802,83 @@ function populateVisualizerSelect() {
         option.textContent = name;
         visualizerSelect.appendChild(option);
     });
+    
+    // Initialize custom select
+    initCustomVisualizerSelect();
+}
+
+// Generic function to create custom select
+function createCustomSelect(selectElement) {
+    // Create custom select wrapper
+    const customSelect = document.createElement('div');
+    customSelect.className = 'custom-select';
+    
+    // Create trigger
+    const trigger = document.createElement('div');
+    trigger.className = 'custom-select-trigger';
+    trigger.textContent = selectElement.options[selectElement.selectedIndex]?.text || selectElement.value;
+    
+    // Create options container
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'custom-select-options';
+    
+    // Populate options
+    Array.from(selectElement.options).forEach((option, index) => {
+        const customOption = document.createElement('div');
+        customOption.className = 'custom-select-option';
+        customOption.textContent = option.text;
+        customOption.dataset.value = option.value;
+        
+        if (option.selected) {
+            customOption.classList.add('selected');
+        }
+        
+        // Click handler
+        customOption.addEventListener('click', () => {
+            // Update native select
+            selectElement.selectedIndex = index;
+            selectElement.dispatchEvent(new Event('change'));
+            
+            // Update trigger
+            trigger.textContent = option.text;
+            
+            // Update selected class
+            optionsContainer.querySelectorAll('.custom-select-option').forEach(opt => {
+                opt.classList.remove('selected');
+            });
+            customOption.classList.add('selected');
+            
+            // Close dropdown
+            customSelect.classList.remove('open');
+        });
+        
+        optionsContainer.appendChild(customOption);
+    });
+    
+    // Toggle dropdown
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        customSelect.classList.toggle('open');
+    });
+    
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+        if (!customSelect.contains(e.target)) {
+            customSelect.classList.remove('open');
+        }
+    });
+    
+    // Assemble
+    customSelect.appendChild(trigger);
+    customSelect.appendChild(optionsContainer);
+    
+    // Insert after native select
+    selectElement.parentNode.insertBefore(customSelect, selectElement.nextSibling);
+}
+
+// Initialize custom visualizer select
+function initCustomVisualizerSelect() {
+    createCustomSelect(visualizerSelect);
 }
 
 // Settings panel toggle

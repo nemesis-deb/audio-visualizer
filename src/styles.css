@@ -71,7 +71,8 @@ body {
 }
 
 /* File/Folder Items */
-.folder-item, .file-item {
+.folder-item,
+.file-item {
   padding: 10px;
   margin: 2px 0;
   border-radius: 3px;
@@ -82,7 +83,8 @@ body {
   transition: background 0.2s;
 }
 
-.folder-item:hover, .file-item:hover {
+.folder-item:hover,
+.file-item:hover {
   background: #3a3a3a;
 }
 
@@ -106,7 +108,8 @@ body {
   opacity: 0.7;
 }
 
-.folder-icon, .file-icon {
+.folder-icon,
+.file-icon {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
@@ -491,8 +494,19 @@ button:disabled {
   font-size: 14px;
 }
 
-/* Select */
+/* Select - Hide native select */
 select {
+  display: none;
+}
+
+/* Custom Select Dropdown */
+.custom-select {
+  position: relative;
+  display: inline-block;
+  min-width: 200px;
+}
+
+.custom-select-trigger {
   background: #1a1a1a;
   color: #fff;
   border: 1px solid #444;
@@ -500,6 +514,63 @@ select {
   border-radius: 3px;
   cursor: pointer;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+
+.custom-select-trigger::after {
+  content: '▼';
+  margin-left: 10px;
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.custom-select.open .custom-select-trigger::after {
+  transform: rotate(180deg);
+}
+
+.custom-select-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 3px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  display: none;
+}
+
+.custom-select.open .custom-select-options {
+  display: block;
+}
+
+.custom-select-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: #fff;
+  font-size: 14px;
+}
+
+.custom-select-option:hover {
+  background: #3a3a3a;
+}
+
+.custom-select-option.selected {
+  background: #00ff88;
+  color: #000;
+}
+
+option {
+  padding: 12px 160px;
+  font-size: 16px;
+  line-height: 100px;
 }
 
 /* Canvas */
