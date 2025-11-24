@@ -35,6 +35,7 @@ process.on('unhandledRejection', (reason, promise) => {
 // Widevine/DRM support removed - using local file playback only
 
 // Suppress GPU-related warnings
+app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-gpu-sandbox');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('disable-software-rasterizer');
@@ -274,6 +275,10 @@ function setupIPCHandlers() {
     getSpotifyTrackFeatures(event, trackId);
   });
 
+  ipcMain.on('spotify-search', (event, query) => {
+    searchSpotifyTracks(event, query);
+  });
+
   ipcMain.on('download-spotify-track', (event, trackInfo) => {
     downloadTrackFromYouTube(event, trackInfo);
   });
@@ -378,6 +383,53 @@ function setupIPCHandlers() {
     } catch (error) {
       console.error('[Main] Error loading preset:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  // YouTube audio extraction using yt-dlp
+  ipcMain.handle('get-youtube-audio-url', async (event, videoId) => {
+    try {
+      console.log('[Main] Getting YouTube audio URL for:', videoId);
+
+      // Use the bundled yt-dlp from youtube-dl-exec
+      const ytdlpPath = require.resolve('youtube-dl-exec').replace('index.js', 'bin/yt-dlp.exe');
+
+      // Get video info using youtube-dl-exec
+      const result = await youtubedl(`https://www.youtube.com/watch?v=${videoId}`, {
+        dumpSingleJson: true,
+        noWarnings: true,
+        noCallHome: true,
+        noCheckCertificate: true,
+        preferFreeFormats: true,
+        youtubeSkipDashManifest: true,
+        extractorArgs: 'youtube:player_client=default'
+      });
+
+      // Find best audio format
+      const audioFormats = result.formats.filter(f => 
+        f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
+      );
+
+      if (audioFormats.length === 0) {
+        throw new Error('No audio formats available');
+      }
+
+      // Sort by quality (bitrate)
+      audioFormats.sort((a, b) => (b.abr || 0) - (a.abr || 0));
+      const bestAudio = audioFormats[0];
+
+      console.log('[Main] Successfully extracted audio URL');
+
+      return {
+        url: bestAudio.url,
+        title: result.title,
+        duration: result.duration,
+        thumbnail: result.thumbnail
+      };
+
+    } catch (error) {
+      console.error('[Main] Error getting YouTube audio:', error);
+      throw error;
     }
   });
 }
@@ -683,6 +735,39 @@ async function getSpotifyTrackFeatures(event, trackId) {
         // Retry the request
         const features = await spotifyApi.getAudioFeaturesForTrack(trackId);
         event.sender.send('spotify-track-features-received', { trackId, features: features.body });
+      } catch (refreshErr) {
+        console.error('Error refreshing token:', refreshErr);
+        event.sender.send('spotify-error', 'Session expired. Please log in again.');
+      }
+    } else {
+      event.sender.send('spotify-error', err.message);
+    }
+  }
+}
+
+async function searchSpotifyTracks(event, query) {
+  try {
+    const results = await spotifyApi.searchTracks(query, { limit: 50 });
+    event.sender.send('spotify-search-results', results.body);
+  } catch (err) {
+    console.error('Error searching Spotify:', err);
+
+    // If token expired, try to refresh
+    if (err.statusCode === 401) {
+      try {
+        console.log('Token expired, attempting refresh...');
+        const data = await spotifyApi.refreshAccessToken();
+        spotifyApi.setAccessToken(data.body['access_token']);
+
+        // Notify renderer of new token
+        event.sender.send('spotify-token-refreshed', {
+          accessToken: data.body['access_token'],
+          expiresIn: data.body['expires_in']
+        });
+
+        // Retry the request
+        const results = await spotifyApi.searchTracks(query, { limit: 50 });
+        event.sender.send('spotify-search-results', results.body);
       } catch (refreshErr) {
         console.error('Error refreshing token:', refreshErr);
         event.sender.send('spotify-error', 'Session expired. Please log in again.');
