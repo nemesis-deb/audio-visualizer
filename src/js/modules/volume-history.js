@@ -21,7 +21,7 @@ export class VolumeHistoryVisualizer {
         console.log('VolumeHistoryVisualizer: Initial analyser:', this.analyser);
 
         // Configuration
-        this.historyDuration = 3000; // 3 seconds
+        this.historyDuration = 1500; // 1.5 seconds
         this.fps = 60;
         this.maxHistoryLength = (this.historyDuration / 1000) * this.fps;
         this.history = new Array(this.maxHistoryLength).fill(0);
@@ -50,7 +50,7 @@ export class VolumeHistoryVisualizer {
     }
 
     updateAnalyser(analyser) {
-        console.log('VolumeHistoryVisualizer: Updating analyser', analyser);
+        //console.log('VolumeHistoryVisualizer: Updating analyser', analyser);
         this.analyser = analyser;
         this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
     }

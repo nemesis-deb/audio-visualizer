@@ -1,4 +1,5 @@
 import { setSettings } from './visualizers/base.js';
+import { SpectraVisualizer } from './visualizers/spectra.js';
 import { WaveformVisualizer } from './visualizers/waveform.js';
 import { FrequencyBarsVisualizer } from './visualizers/frequency-bars.js';
 import { CircularVisualizer } from './visualizers/circular.js';
@@ -17,6 +18,7 @@ import { MatrixVisualizer } from './visualizers/matrix.js';
 import { NebulaVisualizer } from './visualizers/nebula.js';
 import { EqualizerVisualizer } from './visualizers/equalizer.js';
 import { VortexVisualizer } from './visualizers/vortex.js';
+import { AmethystSpectrumVisualizer } from './visualizers/amethyst-spectrum.js';
 import { FileManager } from './modules/file-manager.js';
 import { DiscordRPC } from './modules/discord-rpc.js';
 import { BPMDetector } from './modules/bpm-detector.js';
@@ -25,7 +27,31 @@ import { SpotifyIntegration } from './modules/spotify-integration.js';
 import { AlbumArtManager } from './modules/album-art.js';
 import { PresetManager } from './modules/preset-manager.js';
 import { VolumeHistoryVisualizer } from './modules/volume-history.js';
+import { VisualizerManager } from './modules/visualizer-manager.js';
+import { createAudioFileLoader } from './modules/audio-file-loader.js';
 
+console.log('[RENDERER] Starting renderer.js execution...');
+console.log('[RENDERER] VisualizerManager imported:', typeof VisualizerManager !== 'undefined' ? '✓' : '✗');
+console.log('[RENDERER] window.require available:', typeof window !== 'undefined' && typeof window.require === 'function');
+console.log('[RENDERER] All imports loaded successfully');
+console.log('Renderer process loaded!');
+
+// Pre-export loadAudioFile placeholder to prevent "not available" errors
+// Will be replaced with actual function when defined
+window.loadAudioFile = async function(index) {
+    console.warn('loadAudioFile called before initialization, waiting...');
+    // Wait a bit and try again
+    await new Promise(resolve => setTimeout(resolve, 100));
+    if (typeof window.loadAudioFile === 'function' && window.loadAudioFile.toString().includes('loadAudioFile called before')) {
+        // Still the placeholder, wait more
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    if (typeof window.loadAudioFile === 'function' && !window.loadAudioFile.toString().includes('loadAudioFile called before')) {
+        return window.loadAudioFile(index);
+    }
+    throw new Error('Audio file loader not initialized yet');
+};
+console.log('[RENDERER] All imports loaded successfully');
 console.log('Renderer process loaded!');
 
 // Global error handlers
@@ -42,7 +68,25 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 // CommonJS requires (Node.js modules)
-const path = require('path');
+// Use window.require in Electron renderer process (works with ES modules)
+let path = null;
+if (typeof window !== 'undefined' && window.require) {
+  try {
+    path = window.require('path');
+  } catch (e) {
+    console.warn('Failed to load path module:', e);
+  }
+}
+
+// Fallback path object for non-Electron environments (Vite dev server)
+if (!path) {
+  path = {
+    sep: '/', // Default to Unix-style separator
+    join: (...parts) => parts.filter(p => p).join('/'),
+    resolve: (...parts) => '/' + parts.filter(p => p).join('/')
+  };
+  console.log('Using fallback path module (running in Vite dev server)');
+}
 
 // Audio variables (declare first)
 // Create module instances
@@ -53,7 +97,9 @@ const keyDetector = new KeyDetector();
 const spotify = new SpotifyIntegration();
 const albumArtManager = new AlbumArtManager();
 const presetManager = new PresetManager();
-const volumeHistoryVisualizer = new VolumeHistoryVisualizer('volumeHistoryCanvas', null);
+// VolumeHistoryVisualizer is now initialized by Vue component (AudioPlayer.vue)
+// Don't initialize here as the canvas doesn't exist yet
+let volumeHistoryVisualizer = null;
 
 // Gain control state
 let currentGainDB = 0;
@@ -94,16 +140,16 @@ function applyGain() {
     // Apply to audio (dB to linear: gain = 10^(dB/20))
     const linearGain = Math.pow(10, currentGainDB / 20);
 
-    // Apply to dB gain node (affects visualizers)
-    if (dbGainNode) {
-        dbGainNode.gain.value = linearGain;
-        console.log('Applied dB gain:', currentGainDB, 'dB (linear:', linearGain, ')');
-    }
-
-    // Also apply to window.dbGainNode if it exists (for external audio)
+    // Apply to window.dbGainNode if it exists (for external audio)
+    // Note: dbGainNode is declared later, so use window.dbGainNode first
     if (window.dbGainNode) {
         window.dbGainNode.gain.value = linearGain;
+        console.log('Applied dB gain:', currentGainDB, 'dB (linear:', linearGain, ')');
     }
+    
+    // Also apply to local dbGainNode if it exists (for local audio)
+    // This will be available after audio context is created
+    // Use window.dbGainNode instead to avoid temporal dead zone issues
 
     // Save to localStorage
     localStorage.setItem('audioGainDB', currentGainDB.toString());
@@ -237,6 +283,7 @@ window.audioManager = {
             // Hook element events to update UI & progress
             const onPlay = () => {
                 isPlaying = true;
+    syncStateToWindow();
                 if (playBtn) playBtn.disabled = true;
                 if (pauseBtn) pauseBtn.disabled = false;
                 updateDiscordPresence();
@@ -244,6 +291,7 @@ window.audioManager = {
             };
             const onPause = () => {
                 isPlaying = false;
+    syncStateToWindow();
                 if (playBtn) playBtn.disabled = false;
                 if (pauseBtn) pauseBtn.disabled = true;
                 updateDiscordPresence();
@@ -261,6 +309,7 @@ window.audioManager = {
             };
             const onEnded = () => {
                 isPlaying = false;
+    syncStateToWindow();
                 if (playBtn) playBtn.disabled = false;
                 if (pauseBtn) pauseBtn.disabled = true;
                 updateFileSelection();
@@ -310,7 +359,34 @@ let audioSource = null;
 let isPlaying = false;
 let currentFolder = '';
 let audioFiles = []; // Will be synced with fileManager.audioFiles
+window.audioFiles = audioFiles; // Export to window for Vue components
+
+// Sync audio files to loader when they change
+function syncAudioFilesToLoader() {
+    if (audioFileLoader) {
+        audioFileLoader.setAudioFiles(audioFiles);
+    }
+}
 let currentFileIndex = -1;
+window.currentFileIndex = currentFileIndex; // Export to window for Vue components
+window.isPlaying = isPlaying; // Export to window for Vue components
+
+// Export to window for Vue components
+window.fileManager = fileManager;
+window.albumArtManager = albumArtManager;
+window.metadataCache = metadataCache;
+window.parseFileName = parseFileName;
+// loadAudioFile will be exported after it's defined (see line ~1811)
+
+// Helper function to sync state to window for Vue components
+function syncStateToWindow() {
+  window.isPlaying = isPlaying;
+  window.currentFileIndex = currentFileIndex;
+  window.audioFiles = audioFiles;
+  window.currentFolder = currentFolder;
+  // Also sync to AudioFileLoader
+  syncAudioFilesToLoader();
+}
 let searchQuery = '';
 let startTime = 0;
 let pauseTime = 0;
@@ -329,21 +405,29 @@ let manualStop = false; // Flag to distinguish manual stop from natural end
 // Folder scanning settings
 let includeSubfolders = localStorage.getItem('includeSubfolders') === 'true' || false;
 
-const canvas = document.getElementById('visualizer');
-const ctx = canvas.getContext('2d', {
-    alpha: false,           // Disable alpha for better performance
-    desynchronized: true,   // Reduce latency, allow GPU to work ahead
-    willReadFrequently: false,  // We're not reading pixels, only drawing
-    colorSpace: 'srgb'      // Explicit color space for better performance
-});
-
-// Enable image smoothing for better quality
-ctx.imageSmoothingEnabled = true;
-ctx.imageSmoothingQuality = 'high';
+// Canvas is now managed by Vue component (VisualizerCanvas.vue)
+// Get canvas reference if it exists, otherwise it will be set by Vue component
+let canvas = document.getElementById('visualizer');
+let ctx = null;
+if (canvas) {
+    ctx = canvas.getContext('2d', {
+        alpha: false,           // Disable alpha for better performance
+        desynchronized: true,   // Reduce latency, allow GPU to work ahead
+        willReadFrequently: false,  // We're not reading pixels, only drawing
+        colorSpace: 'srgb'      // Explicit color space for better performance
+    });
+    
+    if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+    }
+}
 
 // Create audio context
 const audioContext = new AudioContext();
+window.audioContext = audioContext; // Export to window for Vue components
 console.log('AudioContext created:', audioContext.state);
+console.log('✓ window.audioContext exported:', !!window.audioContext);
 console.log('Canvas 2D context created with GPU acceleration hints');
 console.log('Note: 2D canvas is primarily CPU-bound. For better GPU usage, use 3D visualizers (DNA Helix, Tunnel).');
 
@@ -362,7 +446,9 @@ gainNode.gain.value = volume; // Use saved volume
 var analyser = audioContext.createAnalyser();
 analyser.fftSize = 2048; // Must be power of 2 (256, 512, 1024, 2048, etc.)
 analyser.smoothingTimeConstant = 0.8; // 0-1, higher = smoother
+window.analyser = analyser; // Export to window for Vue components
 console.log('AnalyserNode created - fftSize:', analyser.fftSize, 'smoothing:', analyser.smoothingTimeConstant);
+console.log('✓ window.analyser exported:', !!window.analyser);
 
 // Create separate analyser for volume history (affected by dB gain)
 var volumeHistoryAnalyser = audioContext.createAnalyser();
@@ -371,11 +457,38 @@ volumeHistoryAnalyser.smoothingTimeConstant = 0.8;
 console.log('VolumeHistoryAnalyserNode created');
 window.volumeHistoryAnalyser = volumeHistoryAnalyser; // Make available globally
 
+// Initialize AudioFileLoader
+let audioFileLoader = null;
+try {
+    console.log('[RENDERER] Creating AudioFileLoader...');
+    audioFileLoader = createAudioFileLoader(audioContext, analyser, gainNode);
+    console.log('✓ AudioFileLoader created:', !!audioFileLoader);
+    
+    // Sync audio files
+    audioFileLoader.setAudioFiles(audioFiles);
+    
+    // Verify export
+    console.log('✓ window.loadAudioFile after init:', typeof window.loadAudioFile);
+    console.log('✓ window.audioFileLoader after init:', typeof window.audioFileLoader);
+    const isPlaceholder = window.loadAudioFile && window.loadAudioFile.toString().includes('called before initialization');
+    console.log('✓ Is placeholder?', isPlaceholder);
+    
+    // Store reference for later callback setup (after UI elements are available)
+    window._audioFileLoader = audioFileLoader;
+    
+    // Callbacks will be set up after UI elements are available (see setupAudioFileLoaderCallbacks function)
+} catch (e) {
+    console.error('✗ Failed to initialize AudioFileLoader:', e);
+    console.error('Error details:', e.message);
+    if (e.stack) console.error('Stack:', e.stack);
+}
+
 // Create data arrays for analysis
 const bufferLength = analyser.frequencyBinCount; // Half of fftSize
 const timeDomainData = new Uint8Array(bufferLength); // For waveform (0-255)
 const frequencyData = new Uint8Array(bufferLength); // For frequency bars (0-255)
 console.log('Data arrays created - bufferLength:', bufferLength);
+console.log('About to get UI elements...');
 
 // Get UI elements
 const playBtn = document.getElementById('playBtn');
@@ -408,6 +521,132 @@ const progressBar = document.getElementById('progressBar');
 const progressFill = document.getElementById('progressFill');
 const progressHandle = document.getElementById('progressHandle');
 
+console.log('Got all UI elements, about to get settings elements...');
+
+// Set up AudioFileLoader callbacks now that UI elements are available
+function setupAudioFileLoaderCallbacks(loader) {
+    if (!loader) {
+        console.warn('[RENDERER] No loader provided to setupAudioFileLoaderCallbacks');
+        return;
+    }
+    
+    console.log('[RENDERER] Setting up AudioFileLoader callbacks...');
+    
+    loader.onFileLoaded = (data) => {
+        console.log('[RENDERER] onFileLoaded callback triggered for:', data.file.name);
+        audioBuffer = data.buffer;
+        currentFileIndex = data.index;
+        syncStateToWindow();
+        
+        // Update UI if elements exist
+        if (statusText) {
+            statusText.textContent = `${data.file.name} (${data.duration.toFixed(1)}s)`;
+        }
+        if (playBtn) {
+            playBtn.disabled = false;
+            console.log('[RENDERER] Play button enabled');
+        }
+        if (pauseBtn) pauseBtn.disabled = true;
+        if (durationEl) durationEl.textContent = formatTime(data.duration);
+        if (currentTimeEl) currentTimeEl.textContent = '0:00';
+        if (progressFill) progressFill.style.width = '0%';
+        if (progressHandle) progressHandle.style.left = '0%';
+        
+        // Reset and analyze BPM
+        if (bpmDetector) {
+            bpmDetector.reset();
+            updateBPMDisplay();
+            analyzeBPM(data.buffer);
+        }
+        
+        // Reset and analyze Key
+        if (keyDetector) {
+            keyDetector.reset();
+            updateKeyDisplay();
+            analyzeKey(data.buffer);
+        }
+        
+        // Update now playing
+        updateNowPlaying(data.file.name, data.file.path);
+        
+        // Update UI
+        updateFileSelection();
+        updateDiscordPresence();
+        
+        // Update audio store for Vue components
+        // The store is managed by Vue/Pinia, so we'll update it via a custom event
+        // or by directly setting window properties that Vue components watch
+        try {
+            const file = audioFiles[data.index];
+            if (file) {
+                // Dispatch custom event for Vue components to listen to
+                const event = new CustomEvent('audio-file-loaded', {
+                    detail: {
+                        file: file,
+                        index: data.index,
+                        duration: data.duration,
+                        buffer: data.buffer
+                    }
+                });
+                window.dispatchEvent(event);
+                
+                // Also try to update window.audioStore if it exists
+                if (window.audioStore) {
+                    window.audioStore.setCurrentIndex(data.index);
+                    const metadata = metadataCache.get(file.path);
+                    if (metadata) {
+                        window.audioStore.title = metadata.title || file.name;
+                        window.audioStore.artist = metadata.artist || '';
+                    } else {
+                        const parsed = parseFileName(file.name);
+                        window.audioStore.title = parsed.title;
+                        window.audioStore.artist = parsed.artist || '';
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[RENDERER] Could not update audio store:', e);
+        }
+        
+        console.log('[RENDERER] onFileLoaded callback completed');
+    };
+    
+    loader.onPlaybackStateChanged = (playing) => {
+        console.log('[RENDERER] onPlaybackStateChanged:', playing);
+        isPlaying = playing;
+        syncStateToWindow();
+        if (playBtn) playBtn.disabled = playing;
+        if (pauseBtn) pauseBtn.disabled = !playing;
+        updateFileSelection();
+        updateDiscordPresence();
+        
+        // Update audio store
+        try {
+            if (window.audioStore) {
+                window.audioStore.setPlaying(playing);
+            }
+        } catch (e) {
+            console.warn('[RENDERER] Could not update audio store:', e);
+        }
+    };
+    
+    loader.onError = (error) => {
+        console.error('[RENDERER] AudioFileLoader error:', error);
+        if (statusText) {
+            statusText.textContent = 'Error loading file: ' + error.message;
+        }
+        if (playBtn) playBtn.disabled = true;
+        if (pauseBtn) pauseBtn.disabled = true;
+    };
+    
+    console.log('[RENDERER] AudioFileLoader callbacks configured');
+}
+
+// Set up callbacks if loader is already initialized
+if (window._audioFileLoader) {
+    setupAudioFileLoaderCallbacks(window._audioFileLoader);
+}
+
 // Settings UI elements (already declared above, just get the inputs)
 const settingsContent = document.getElementById('settingsContent');
 const primaryColorInput = document.getElementById('primaryColor');
@@ -416,6 +655,8 @@ const smoothingInput = document.getElementById('smoothing');
 const sensitivityInput = document.getElementById('sensitivity');
 const bgColorInput = document.getElementById('bgColor');
 const mirrorEffectInput = document.getElementById('mirrorEffect');
+
+console.log('Got settings elements, about to create settings object...');
 
 // Settings object
 const settings = {
@@ -435,7 +676,10 @@ const settings = {
 };
 
 // Share settings with visualizers
+console.log('About to call setSettings...');
 setSettings(settings);
+console.log('setSettings called successfully');
+console.log('About to declare beat detection variables...');
 
 // Beat detection variables
 let beatValue = 0;
@@ -472,6 +716,8 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
+console.log('About to define formatTime function...');
+
 // Format time in MM:SS
 function formatTime(seconds) {
     if (!isFinite(seconds)) return '0:00';
@@ -479,6 +725,9 @@ function formatTime(seconds) {
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
+
+console.log('formatTime function defined successfully');
+console.log('About to define detectBeat function...');
 
 // Beat detection using BPM timing (wrapper for bpmDetector module)
 function detectBeat() {
@@ -595,8 +844,9 @@ async function updateDiscordPresence() {
         }
     }
 
-    discordRPC.updatePresence({
-        visualizerName: visualizerManager?.currentVisualizer?.name || 'Waveform',
+    // Wait for async updatePresence to complete (it fetches cover art)
+    await discordRPC.updatePresence({
+        visualizerName: window.visualizerManager?.getCurrent()?.name || 'Waveform',
         currentFile: currentFile,
         isPlaying: isPlaying,
         audioBuffer: audioBuffer,
@@ -638,6 +888,7 @@ function updateProgress() {
     if (currentTime >= duration) {
         // Song ended
         isPlaying = false;
+    syncStateToWindow();
         playBtn.disabled = false;
         pauseBtn.disabled = true;
         updateFileSelection();
@@ -648,8 +899,12 @@ function updateProgress() {
 }
 
 // ===== PLAYBACK CONTROLS =====
+console.log('Reached PLAYBACK CONTROLS section...');
+// Note: These controls are now handled by Vue components (AudioPlayer.vue)
+// Only attach listeners if elements exist (for backward compatibility)
 
 // Previous track
+if (prevBtn) {
 prevBtn.addEventListener('click', () => {
     if (audioFiles.length === 0) return;
 
@@ -675,6 +930,7 @@ prevBtn.addEventListener('click', () => {
 });
 
 // Next track
+if (nextBtn) {
 nextBtn.addEventListener('click', () => {
     playNextTrack();
 });
@@ -702,19 +958,23 @@ function playNextTrack() {
     }
 
     loadAudioFile(nextIndex).then(() => {
-        setTimeout(() => playBtn.click(), 100);
+        setTimeout(() => playBtn?.click(), 100);
     });
+}
 }
 
 // Shuffle toggle
+if (shuffleBtn) {
 shuffleBtn.addEventListener('click', () => {
     shuffleMode = !shuffleMode;
     shuffleBtn.classList.toggle('active', shuffleMode);
     shuffleBtn.title = shuffleMode ? 'Shuffle On' : 'Shuffle Off';
     console.log('Shuffle:', shuffleMode);
 });
+}
 
 // Repeat toggle
+if (repeatBtn) {
 repeatBtn.addEventListener('click', () => {
     const modes = ['off', 'all', 'one'];
     const currentIndex = modes.indexOf(repeatMode);
@@ -735,6 +995,7 @@ repeatBtn.addEventListener('click', () => {
 
     console.log('Repeat mode:', repeatMode);
 });
+}
 
 // Volume control
 if (volumeSlider) {
@@ -765,6 +1026,7 @@ if (volumeSlider) {
 }
 
 // Speed control
+if (speedSelect) {
 speedSelect.addEventListener('change', (e) => {
     playbackRate = parseFloat(e.target.value);
     if (audioSource) {
@@ -775,6 +1037,7 @@ speedSelect.addEventListener('change', (e) => {
 
 // Initialize custom speed select
 createCustomSelect(speedSelect);
+}
 
 // Queue panel toggle
 if (queueBtn) {
@@ -812,9 +1075,9 @@ if (fullscreenBtn && canvasContainer) {
         fullscreenBtn.title = isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen';
 
         // Resize canvas when toggling fullscreen
-        if (visualizerManager && visualizerManager.getCurrent()) {
+        if (window.visualizerManager && window.visualizerManager.getCurrent()) {
             setTimeout(() => {
-                visualizerManager.getCurrent().resize();
+                window.visualizerManager.getCurrent().resize();
             }, 100);
         }
     });
@@ -826,9 +1089,9 @@ if (fullscreenBtn && canvasContainer) {
             fullscreenBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
             fullscreenBtn.title = 'Toggle Fullscreen';
 
-            if (visualizerManager && visualizerManager.getCurrent()) {
+            if (window.visualizerManager && window.visualizerManager.getCurrent()) {
                 setTimeout(() => {
-                    visualizerManager.getCurrent().resize();
+                    window.visualizerManager.getCurrent().resize();
                 }, 100);
             }
         }
@@ -988,6 +1251,7 @@ progressBar.addEventListener('click', (e) => {
                 playNextTrack();
             } else {
                 isPlaying = false;
+    syncStateToWindow();
                 updateStatusWithPerf('Ended');
                 playBtn.disabled = false;
                 pauseBtn.disabled = true;
@@ -1012,15 +1276,25 @@ progressBar.addEventListener('click', (e) => {
 
 
 // ===== FILE BROWSER =====
-const fs = require('fs');
+let fs = null;
+let ipcRenderer = null;
+try {
+    if (window.require) {
+        fs = window.require('fs');
+        ipcRenderer = window.require('electron').ipcRenderer;
+    }
+} catch (e) {
+    console.warn('Failed to require fs or electron modules:', e);
+}
 // path already required at top
-const { ipcRenderer } = require('electron');
 
 // Browse folder button
-browseFolderBtn.addEventListener('click', async () => {
-    console.log('Browse folder button clicked');
-    ipcRenderer.send('open-folder-dialog');
-});
+if (browseFolderBtn) {
+    browseFolderBtn.addEventListener('click', async () => {
+        console.log('Browse folder button clicked');
+        ipcRenderer.send('open-folder-dialog');
+    });
+}
 
 // Include subfolders checkbox
 const includeSubfoldersCheckbox = document.getElementById('includeSubfoldersCheckbox');
@@ -1037,6 +1311,7 @@ if (includeSubfoldersCheckbox) {
             const result = fileManager.loadFolder(currentFolder);
             if (result.success) {
                 audioFiles = result.files;
+                syncAudioFilesToLoader();
                 renderFileList();
                 fileCount.textContent = `${result.count} song${result.count !== 1 ? 's' : ''}`;
             }
@@ -1051,6 +1326,7 @@ ipcRenderer.on('folder-selected', (event, folderPath) => {
         const result = fileManager.loadFolder(folderPath);
         if (result.success) {
             audioFiles = result.files;
+            syncAudioFilesToLoader();
             currentFolder = folderPath;
             updateFolderPath(folderPath);
             renderFileList();
@@ -1220,19 +1496,20 @@ if (applyCustomResolutionBtn) {
 }
 
 function applyCanvasResolution(width, height) {
+    if (!canvas) return;
     canvas.width = width;
     canvas.height = height;
 
     // Reinitialize all visualizers with new canvas size
-    if (visualizerManager) {
-        visualizerManager.visualizers.forEach(viz => {
+    if (window.visualizerManager) {
+        window.visualizerManager.visualizers.forEach(viz => {
             if (viz.init) {
                 viz.init(canvas, ctx);
             }
         });
 
         // Trigger resize on current visualizer
-        const current = visualizerManager.getCurrent();
+        const current = window.visualizerManager.getCurrent();
         if (current && current.resize) {
             current.resize();
         }
@@ -1246,7 +1523,7 @@ function updateTweaksPanel() {
     const tweaksContent = document.getElementById('visualizerTweaksContent');
     if (!tweaksContent) return;
 
-    const visualizer = visualizerManager.currentVisualizer;
+    const visualizer = window.visualizerManager?.getCurrent();
     if (!visualizer) return;
 
     const customSettings = visualizer.getCustomSettings();
@@ -1495,7 +1772,7 @@ function renderGroupedFileList(filteredFiles, groupedFolders) {
     const mainFolderPath = fileManager.getCurrentFolder();
 
     filteredFiles.forEach(file => {
-        const folderPath = require('path').dirname(file.path);
+        const folderPath = window.require('path').dirname(file.path);
         if (!filesByFolder.has(folderPath)) {
             filesByFolder.set(folderPath, []);
         }
@@ -1663,13 +1940,41 @@ searchInput.addEventListener('input', (e) => {
     updateFileSelection();
 });
 
-// Load audio file
+// Load audio file - use AudioFileLoader if available
 async function loadAudioFile(index) {
-    console.log('loadAudioFile called with index:', index);
+    console.log('[RENDERER] loadAudioFile called with index:', index);
+    
+    // Use new AudioFileLoader if available
+    if (audioFileLoader) {
+        console.log('[RENDERER] Using AudioFileLoader');
+        return audioFileLoader.loadFile(index);
+    }
+    
+    // Fallback to old implementation (should not be reached if loader is initialized)
+    console.warn('[RENDERER] AudioFileLoader not available, using fallback implementation');
+    console.log('audioFiles length:', audioFiles.length);
+    console.log('fs available:', typeof fs !== 'undefined');
+    console.log('audioContext available:', typeof audioContext !== 'undefined');
 
     if (index < 0 || index >= audioFiles.length) {
-        console.log('Invalid index, returning');
-        return;
+        console.error('Invalid index:', index, 'audioFiles.length:', audioFiles.length);
+        const error = new Error(`Invalid file index: ${index} (available: 0-${audioFiles.length - 1})`);
+        if (statusText) statusText.textContent = 'Error: Invalid file index';
+        throw error;
+    }
+
+    // Check if fs is available
+    if (typeof fs === 'undefined') {
+        console.error('fs module not available');
+        if (statusText) statusText.textContent = 'Error: File system not available';
+        throw new Error('File system module not available');
+    }
+
+    // Check if audioContext is available
+    if (typeof audioContext === 'undefined') {
+        console.error('audioContext not available');
+        if (statusText) statusText.textContent = 'Error: Audio context not available';
+        throw new Error('Audio context not available');
     }
 
     // Stop current playback if any
@@ -1681,15 +1986,17 @@ async function loadAudioFile(index) {
             console.warn('Error stopping audio source:', e);
         }
         isPlaying = false;
+    syncStateToWindow();
     }
 
     currentFileIndex = index;
+    syncStateToWindow();
     const file = audioFiles[index];
 
     if (!file || !file.path) {
         console.error('Invalid file object:', file);
-        statusText.textContent = 'Error: Invalid file';
-        return;
+        if (statusText) statusText.textContent = 'Error: Invalid file';
+        throw new Error('Invalid file object');
     }
 
     updateStatusWithPerf('Loading');
@@ -1758,6 +2065,23 @@ async function loadAudioFile(index) {
     }
 }
 
+// Export loadAudioFile to window now that it's defined
+// This MUST happen for the app to work - replace the placeholder
+console.log('[RENDERER] Attempting to export loadAudioFile...');
+console.log('[RENDERER] loadAudioFile type:', typeof loadAudioFile);
+if (typeof loadAudioFile === 'function') {
+    const wasPlaceholder = window.loadAudioFile && window.loadAudioFile.toString().includes('called before initialization');
+    window.loadAudioFile = loadAudioFile;
+    console.log('✓ window.loadAudioFile exported (replaced placeholder):', typeof window.loadAudioFile === 'function');
+    console.log('  - Was placeholder:', wasPlaceholder);
+} else {
+    console.error('✗ loadAudioFile is not a function! Type:', typeof loadAudioFile);
+    // Keep placeholder if real function failed
+    if (!window.loadAudioFile || window.loadAudioFile.toString().includes('called before initialization')) {
+        console.warn('Keeping placeholder loadAudioFile');
+    }
+}
+
 // Update file selection UI
 function updateFileSelection() {
     const fileItems = fileBrowser.querySelectorAll('.file-item');
@@ -1771,6 +2095,7 @@ function updateFileSelection() {
 }
 
 // Play button handler
+if (playBtn) {
 playBtn.addEventListener('click', () => {
     // If an external media element is connected (YouTube)
     if (window.audioManager && window.audioManager.externalAudio) {
@@ -1833,6 +2158,7 @@ playBtn.addEventListener('click', () => {
         } else {
             // End of playlist
             isPlaying = false;
+    syncStateToWindow();
             statusText.textContent = 'Playback ended';
             playBtn.disabled = false;
             pauseBtn.disabled = true;
@@ -1851,6 +2177,7 @@ playBtn.addEventListener('click', () => {
     pauseTime = 0;
 
     isPlaying = true;
+    syncStateToWindow();
     updateStatusWithPerf('Playing');
     playBtn.disabled = true;
     pauseBtn.disabled = false;
@@ -1863,10 +2190,18 @@ playBtn.addEventListener('click', () => {
     updateDiscordPresence();
 
     // Start visualization (animation loop runs continuously)
-    animate();
+    // Note: animate() is called here, but it's defined later in the file
+    // This will work because function declarations are hoisted
+    if (typeof animate === 'function') {
+        animate();
+    } else {
+        console.warn('animate() not yet defined, will be called when available');
+    }
 });
+}
 
 // Pause button handler
+if (pauseBtn) {
 pauseBtn.addEventListener('click', () => {
     if (window.audioManager && window.audioManager.externalAudio) {
         window.audioManager.externalAudio.pause();
@@ -1878,6 +2213,7 @@ pauseBtn.addEventListener('click', () => {
         audioSource.stop();
         pauseTime = audioContext.currentTime - startTime;
         isPlaying = false;
+    syncStateToWindow();
         updateStatusWithPerf('Paused');
         playBtn.disabled = false;
         pauseBtn.disabled = true;
@@ -1886,8 +2222,10 @@ pauseBtn.addEventListener('click', () => {
         console.log('Playback paused at', pauseTime);
     }
 });
+}
 
 // ===== VISUALIZER ARCHITECTURE =====
+console.log('Reached VISUALIZER ARCHITECTURE section, about to define Visualizer base class...');
 
 // Base Visualizer class
 class Visualizer {
@@ -1921,87 +2259,133 @@ class Visualizer {
 }
 
 // Waveform Visualizer
-// Visualizer Manager
-class VisualizerManager {
-    constructor() {
-        this.visualizers = new Map();
-        this.currentVisualizer = null;
+console.log('Reached end of file browser code, about to create VisualizerManager instance...');
+console.log('VisualizerManager class available:', typeof VisualizerManager !== 'undefined' ? '✓' : '✗');
+
+// Create visualizer manager and register visualizers
+try {
+    if (typeof VisualizerManager === 'undefined') {
+        throw new Error('VisualizerManager class is not defined. Import may have failed.');
+    }
+    const visualizerManager = new VisualizerManager();
+    window.visualizerManager = visualizerManager; // Export to window for Vue components
+    console.log('✓ window.visualizerManager exported:', !!window.visualizerManager);
+    
+    visualizerManager.register(new SpectraVisualizer());
+    visualizerManager.register(new WaveformVisualizer());
+    visualizerManager.register(new FrequencyBarsVisualizer());
+    visualizerManager.register(new CircularVisualizer());
+    visualizerManager.register(new ParticleVisualizer());
+    visualizerManager.register(new SpectrumVisualizer());
+    visualizerManager.register(new RadialBarsVisualizer());
+    visualizerManager.register(new WaveRingsVisualizer());
+    visualizerManager.register(new OscilloscopeVisualizer());
+    visualizerManager.register(new KaleidoscopeVisualizer());
+    visualizerManager.register(new DnaHelixVisualizer());
+    visualizerManager.register(new StarfieldVisualizer());
+    visualizerManager.register(new TunnelVisualizer());
+    visualizerManager.register(new FireworksVisualizer());
+    visualizerManager.register(new PlasmaVisualizer());
+    visualizerManager.register(new MatrixVisualizer());
+    visualizerManager.register(new NebulaVisualizer());
+    visualizerManager.register(new EqualizerVisualizer());
+    visualizerManager.register(new VortexVisualizer());
+    visualizerManager.register(new AmethystSpectrumVisualizer());
+    
+    // Initialize all visualizers with canvas context (if canvas exists)
+    // Note: Canvas is now managed by Vue component, so this might be null initially
+    if (canvas && ctx) {
+        visualizerManager.visualizers.forEach(viz => {
+            try {
+                viz.init(canvas, ctx);
+            } catch (e) {
+                console.warn('Failed to initialize visualizer:', viz.name, e);
+            }
+        });
+    } else {
+        console.log('Canvas not available yet - visualizers will be initialized by Vue component');
     }
 
-    register(visualizer) {
-        this.visualizers.set(visualizer.name, visualizer);
-        console.log(`Registered visualizer: ${visualizer.name}`);
+    visualizerManager.setActive('Spectra');
+    
+    // Populate visualizer dropdown now that they're registered
+    try {
+        populateVisualizerSelect();
+    } catch (e) {
+        console.warn('populateVisualizerSelect failed (expected if DOM not ready):', e);
     }
-
-    setActive(name) {
-        const visualizer = this.visualizers.get(name);
-        if (visualizer) {
-            this.currentVisualizer = visualizer;
-            console.log(`Active visualizer: ${name}`);
-            return true;
+} catch (e) {
+    console.error('Error initializing VisualizerManager:', e);
+    console.error('Error stack:', e.stack);
+    // Try to create a minimal visualizerManager as fallback
+    try {
+        // Fallback: define inline if import failed
+        if (typeof VisualizerManager === 'undefined') {
+            console.warn('VisualizerManager import failed, using fallback definition');
+            class VisualizerManager {
+                constructor() {
+                    this.visualizers = new Map();
+                    this.currentVisualizer = null;
+                }
+                register(visualizer) {
+                    this.visualizers.set(visualizer.name, visualizer);
+                    console.log(`Registered visualizer: ${visualizer.name}`);
+                }
+                setActive(name) {
+                    const visualizer = this.visualizers.get(name);
+                    if (visualizer) {
+                        this.currentVisualizer = visualizer;
+                        console.log(`Active visualizer: ${name}`);
+                        return true;
+                    }
+                    return false;
+                }
+                update(timeDomainData, frequencyData) {
+                    if (this.currentVisualizer) {
+                        this.currentVisualizer.update(timeDomainData, frequencyData);
+                    }
+                }
+                draw() {
+                    if (this.currentVisualizer) {
+                        this.currentVisualizer.draw();
+                    }
+                }
+                getCurrent() {
+                    return this.currentVisualizer;
+                }
+                getCurrentName() {
+                    return this.currentVisualizer ? this.currentVisualizer.name : null;
+                }
+                get(name) {
+                    return this.visualizers.get(name);
+                }
+                getVisualizerNames() {
+                    return Array.from(this.visualizers.keys());
+                }
+            }
+            const visualizerManager = new VisualizerManager();
+            window.visualizerManager = visualizerManager;
+            console.log('✓ Fallback VisualizerManager created');
+        } else {
+            // Import succeeded but instantiation failed
+            window.visualizerManager = null;
         }
-        return false;
-    }
-
-    update(timeDomainData, frequencyData) {
-        if (this.currentVisualizer) {
-            this.currentVisualizer.update(timeDomainData, frequencyData);
-        }
-    }
-
-    draw() {
-        if (this.currentVisualizer) {
-            this.currentVisualizer.draw();
-        }
-    }
-
-    getVisualizerNames() {
-        return Array.from(this.visualizers.keys());
-    }
-
-    getCurrent() {
-        return this.currentVisualizer;
-    }
-
-    getCurrentName() {
-        return this.currentVisualizer ? this.currentVisualizer.name : null;
-    }
-
-    get(name) {
-        return this.visualizers.get(name);
+    } catch (fallbackError) {
+        console.error('Failed to create fallback VisualizerManager:', fallbackError);
+        window.visualizerManager = null;
     }
 }
 
-// Create visualizer manager and register visualizers
-const visualizerManager = new VisualizerManager();
-visualizerManager.register(new WaveformVisualizer());
-visualizerManager.register(new FrequencyBarsVisualizer());
-visualizerManager.register(new CircularVisualizer());
-visualizerManager.register(new ParticleVisualizer());
-visualizerManager.register(new SpectrumVisualizer());
-visualizerManager.register(new RadialBarsVisualizer());
-visualizerManager.register(new WaveRingsVisualizer());
-visualizerManager.register(new OscilloscopeVisualizer());
-visualizerManager.register(new KaleidoscopeVisualizer());
-visualizerManager.register(new DnaHelixVisualizer());
-visualizerManager.register(new StarfieldVisualizer());
-visualizerManager.register(new TunnelVisualizer());
-visualizerManager.register(new FireworksVisualizer());
-visualizerManager.register(new PlasmaVisualizer());
-visualizerManager.register(new MatrixVisualizer());
-visualizerManager.register(new NebulaVisualizer());
-visualizerManager.register(new EqualizerVisualizer());
-visualizerManager.register(new VortexVisualizer());
-
-// Initialize all visualizers with canvas context
-visualizerManager.visualizers.forEach(viz => viz.init(canvas, ctx));
-
-visualizerManager.setActive('Waveform');
-
-// Populate visualizer dropdown now that they're registered
-populateVisualizerSelect();
+// Final confirmation that all globals are set
+console.log('✓ renderer.js initialization complete');
+console.log('  - window.audioContext:', !!window.audioContext);
+console.log('  - window.analyser:', !!window.analyser);
+console.log('  - window.visualizerManager:', !!window.visualizerManager);
+console.log('  - window.audioManager:', !!window.audioManager);
+console.log('  - window.loadAudioFile:', typeof window.loadAudioFile === 'function');
 
 // Main animation loop
+console.log('Defining animate function...');
 function animate() {
     requestAnimationFrame(animate);
 
@@ -2326,6 +2710,9 @@ function createCustomSelect(selectElement) {
 function initCustomVisualizerSelect() {
     createCustomSelect(visualizerSelect);
 }
+
+// Export createCustomSelect to window for Vue components
+window.createCustomSelect = createCustomSelect;
 
 // Settings panel toggle
 if (settingsToggle) {
@@ -2758,6 +3145,7 @@ setTimeout(() => {
         const result = fileManager.loadFolder(lastFolder);
         if (result.success) {
             audioFiles = result.files;
+            syncAudioFilesToLoader();
             currentFolder = lastFolder;
             updateFolderPath(lastFolder);
             renderFileList();
@@ -3213,10 +3601,12 @@ async function loadSpotifyTrackPreview(track, index) {
         manualStop = true;
         audioSource.stop();
         isPlaying = false;
+    syncStateToWindow();
     }
 
     currentSpotifyTrack = track;
     currentFileIndex = index;
+    syncStateToWindow();
     statusText.textContent = 'Loading...';
 
     try {
@@ -3372,10 +3762,12 @@ function initSpotifyPlayer(accessToken) {
             playBtn.disabled = false;
             pauseBtn.disabled = true;
             isPlaying = false;
+    syncStateToWindow();
         } else {
             playBtn.disabled = true;
             pauseBtn.disabled = false;
             isPlaying = true;
+    syncStateToWindow();
         }
 
         // Update progress
@@ -3486,6 +3878,7 @@ async function playSpotifyTrackFull(track, index) {
 
     currentSpotifyTrack = track;
     currentFileIndex = index;
+    syncStateToWindow();
     statusText.textContent = 'Starting playback...';
     isUsingSpotifyPlayer = true;
 
@@ -3510,6 +3903,7 @@ async function playSpotifyTrackFull(track, index) {
         playBtn.disabled = true;
         pauseBtn.disabled = false;
         isPlaying = true;
+    syncStateToWindow();
 
         // Display message on canvas (no visualization for DRM-protected content)
         ctx.fillStyle = '#000';
@@ -3633,7 +4027,7 @@ function downloadSpotifyTrackOld(track) {
     const searchQuery = `${track.artists[0].name} - ${track.name}`;
 
     // Show dialog to user
-    const { shell } = require('electron');
+    const { shell } = window.require('electron');
 
     // YouTube search (most reliable option)
     const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery + ' official audio')}`;
@@ -3662,4 +4056,5 @@ function downloadSpotifyTrackOld(track) {
         console.error('Error opening YouTube:', err);
         statusText.textContent = `Erreur: impossible d'ouvrir le navigateur`;
     });
+}
 }

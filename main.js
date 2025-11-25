@@ -13,6 +13,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const DiscordRPC = require('discord-rpc');
 const SpotifyWebApi = require('spotify-web-api-node');
 const jsmediatags = require('jsmediatags');
+// music-metadata is an ES module, must use dynamic import
 const youtubedl = require('youtube-dl-exec');
 const yts = require('yt-search');
 const fs = require('fs');
@@ -21,6 +22,19 @@ const os = require('os');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(ffmpegPath);
+
+// Metadata cache directory
+const METADATA_CACHE_PATH = path.join(app.getPath('appData'), 'spectra', 'Metadata Cache');
+
+// Ensure metadata cache directory exists
+try {
+  if (!fs.existsSync(METADATA_CACHE_PATH)) {
+    fs.mkdirSync(METADATA_CACHE_PATH, { recursive: true });
+    console.log(`Created metadata cache folder at ${METADATA_CACHE_PATH}`);
+  }
+} catch (error) {
+  console.error('Failed to create metadata cache directory:', error);
+}
 
 // Global error handlers
 process.on('uncaughtException', (error) => {
@@ -63,6 +77,8 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#1a1a1a',
     icon: 'icon.png',
+    frame: false, // Remove default frame for custom title bar
+    titleBarStyle: 'hidden',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -70,7 +86,38 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile('index.html');
+  // Load Vue app
+  // Check if we should use Vite dev server or load file directly
+  const useVite = process.env.USE_VITE === 'true' || process.env.NODE_ENV === 'development';
+  
+  if (useVite) {
+    // Try to load from Vite dev server
+    const viteUrl = 'http://localhost:5173';
+    console.log('Attempting to load from Vite dev server:', viteUrl);
+    
+    // Wait a bit for Vite to potentially start
+    setTimeout(() => {
+      mainWindow.loadURL(viteUrl).catch((err) => {
+        console.error('Failed to load from Vite dev server:', err.message);
+        console.log('Falling back to direct file load...');
+        // Fallback to file load
+        mainWindow.loadFile('index.html');
+      });
+    }, 500);
+  } else {
+    // Load file directly (may not work with ES modules, but try anyway)
+    console.log('Loading file directly...');
+    mainWindow.loadFile('index.html');
+  }
+
+  // Update maximize button when window state changes
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window-maximized');
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window-unmaximized');
+  });
 
   // Check if dev tools should open on startup
   mainWindow.webContents.on('did-finish-load', () => {
@@ -232,6 +279,109 @@ function createMenu() {
 
 // Setup IPC handlers
 function setupIPCHandlers() {
+  // Window controls
+  ipcMain.on('window-minimize', () => {
+    if (mainWindow) mainWindow.minimize();
+  });
+
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow) {
+      if (mainWindow.isMaximized()) {
+        mainWindow.unmaximize();
+      } else {
+        mainWindow.maximize();
+      }
+    }
+  });
+
+  ipcMain.on('window-close', () => {
+    if (mainWindow) mainWindow.close();
+  });
+
+  ipcMain.on('get-window-state', (event) => {
+    if (mainWindow) {
+      event.sender.send('window-state', mainWindow.isMaximized());
+    }
+  });
+
+  // Menu actions
+  ipcMain.on('menu-action', (event, action, ...args) => {
+    const { webContents } = require('electron');
+    switch (action) {
+      case 'open-folder':
+        mainWindow.webContents.send('menu-open-folder');
+        break;
+      case 'open-settings':
+        mainWindow.webContents.send('menu-open-settings');
+        break;
+      case 'quit':
+        app.quit();
+        break;
+      case 'undo':
+      case 'redo':
+      case 'cut':
+      case 'copy':
+      case 'paste':
+      case 'delete':
+      case 'selectAll':
+        mainWindow.webContents.send('menu-edit-action', action);
+        break;
+      case 'reload':
+        mainWindow.reload();
+        break;
+      case 'forceReload':
+        mainWindow.webContents.reloadIgnoringCache();
+        break;
+      case 'toggleDevTools':
+        mainWindow.webContents.toggleDevTools();
+        break;
+      case 'resetZoom':
+        mainWindow.webContents.setZoomLevel(0);
+        break;
+      case 'zoomIn':
+        mainWindow.webContents.getZoomLevel().then(level => {
+          mainWindow.webContents.setZoomLevel(level + 0.5);
+        });
+        break;
+      case 'zoomOut':
+        mainWindow.webContents.getZoomLevel().then(level => {
+          mainWindow.webContents.setZoomLevel(level - 0.5);
+        });
+        break;
+      case 'toggleFullscreen':
+        mainWindow.setFullScreen(!mainWindow.isFullScreen());
+        break;
+      case 'play-pause':
+        mainWindow.webContents.send('menu-play-pause');
+        break;
+      case 'next-track':
+        mainWindow.webContents.send('menu-next-track');
+        break;
+      case 'prev-track':
+        mainWindow.webContents.send('menu-prev-track');
+        break;
+      case 'shuffle':
+        mainWindow.webContents.send('menu-shuffle');
+        break;
+      case 'repeat':
+        mainWindow.webContents.send('menu-repeat');
+        break;
+      case 'about':
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: 'About Spectra',
+          message: 'Spectra',
+          detail: 'Version 1.1.0\n\nA beautiful audio visualizer with multiple visualization modes.',
+          buttons: ['OK']
+        });
+        break;
+      case 'learn-more':
+        const { shell } = require('electron');
+        shell.openExternal('https://github.com');
+        break;
+    }
+  });
+
   // Handle folder dialog
   ipcMain.on('open-folder-dialog', async (event) => {
     try {
@@ -279,55 +429,163 @@ function setupIPCHandlers() {
     downloadTrackFromYouTube(event, trackInfo);
   });
 
-  // Album art extraction
+  // Album art extraction using music-metadata (Amethyst-style)
   ipcMain.handle('extract-album-art', async (event, filePath) => {
     console.log('[Main] Extracting album art from:', filePath);
-    return new Promise((resolve) => {
-      jsmediatags.read(filePath, {
-        onSuccess: (tag) => {
-          console.log('[Main] Tags read successfully');
-          const picture = tag.tags.picture;
-          if (picture) {
-            console.log('[Main] Album art found! Format:', picture.format, 'Size:', picture.data.length);
-            // Convert picture data to Buffer
-            const data = new Uint8Array(picture.data);
-            const format = picture.format;
-
-            resolve({
-              data: Array.from(data), // Convert to regular array for IPC
-              format: format
-            });
+    try {
+      // Dynamic import for ES module
+      const mm = await import('music-metadata');
+      
+      // Read file and parse metadata
+      const file = await fs.promises.readFile(filePath);
+      const { common } = await mm.parseBuffer(file);
+      
+      // Get first picture (cover art)
+      const picture = common.picture?.[0];
+      if (picture && picture.data) {
+        console.log('[Main] Album art found! Format:', picture.format, 'Size:', picture.data.length);
+        
+        // Convert to Buffer first (Amethyst approach)
+        let buffer;
+        try {
+          if (Buffer.isBuffer(picture.data)) {
+            buffer = picture.data;
+          } else if (picture.data instanceof Uint8Array) {
+            buffer = Buffer.from(picture.data);
+          } else if (Array.isArray(picture.data)) {
+            buffer = Buffer.from(picture.data);
           } else {
-            console.log('[Main] No picture tag found');
+            buffer = Buffer.from(picture.data);
+          }
+          
+          if (!buffer || buffer.length === 0) {
+            console.error('[Main] Failed to convert picture data to buffer');
+            return null;
+          }
+        } catch (conversionError) {
+          console.error('[Main] Error converting picture data:', conversionError);
+          return null;
+        }
+        
+        // Convert to base64 string (Amethyst approach - more reliable for IPC)
+        const base64 = buffer.toString('base64');
+        
+        // Extract format extension from MIME type (e.g., "image/jpeg" -> "jpeg")
+        let format = 'jpeg'; // default
+        if (picture.format) {
+          if (picture.format.includes('/')) {
+            format = picture.format.split('/')[1].split(';')[0]; // "image/jpeg" -> "jpeg"
+          } else {
+            format = picture.format.toLowerCase();
+          }
+        }
+        
+        const result = {
+          data: base64, // Return as base64 string (Amethyst approach)
+          format: format,
+          mimeType: picture.format || `image/${format}`
+        };
+        
+        console.log('[Main] Returning album art as base64, size:', base64.length, 'format:', format);
+        return result;
+      } else {
+        console.log('[Main] No picture tag found in metadata');
+        return null;
+      }
+    } catch (error) {
+      console.error('[Main] Error extracting album art with music-metadata:', error);
+      // Fallback to jsmediatags
+      return new Promise((resolve) => {
+        jsmediatags.read(filePath, {
+          onSuccess: (tag) => {
+            const picture = tag.tags.picture;
+            if (picture && picture.data) {
+              // Convert to Buffer then base64 (Amethyst approach)
+              const uint8Array = new Uint8Array(picture.data);
+              const buffer = Buffer.from(uint8Array);
+              const base64 = buffer.toString('base64');
+              
+              // Extract format
+              let format = 'jpeg';
+              if (picture.format) {
+                format = picture.format.toLowerCase();
+              }
+              
+              resolve({
+                data: base64, // Return as base64 string
+                format: format,
+                mimeType: `image/${format}`
+              });
+            } else {
+              resolve(null);
+            }
+          },
+          onError: (err) => {
+            console.error('[Main] Fallback album art extraction also failed:', err);
             resolve(null);
           }
-        },
-        onError: (error) => {
-          console.error('[Main] Error extracting album art:', error);
-          resolve(null);
-        }
+        });
       });
-    });
+    }
   });
 
-  // Extract metadata (title, artist, album)
+  // Extract metadata using music-metadata (Amethyst-style)
   ipcMain.handle('extract-metadata', async (event, filePath) => {
-    return new Promise((resolve) => {
-      jsmediatags.read(filePath, {
-        onSuccess: (tag) => {
-          const tags = tag.tags;
-          resolve({
-            title: tags.title || null,
-            artist: tags.artist || null,
-            album: tags.album || null
+    try {
+      // Dynamic import for ES module
+      const mm = await import('music-metadata');
+      
+      // Read file and parse metadata
+      const file = await fs.promises.readFile(filePath);
+      const { common, format } = await mm.parseBuffer(file);
+      
+      // Extract artist - handle both single artist and artists array
+      let artist = null;
+      if (common.artist) {
+        artist = common.artist;
+      } else if (common.artists && Array.isArray(common.artists) && common.artists.length > 0) {
+        artist = common.artists.join(' & ');
+      }
+      
+      // Return metadata in a format compatible with existing code
+      const metadata = {
+        title: common.title || null,
+        artist: artist || null,
+        album: common.album || null,
+        // Include full metadata for advanced use
+        common: common,
+        format: format,
+        size: file.buffer.byteLength
+      };
+      
+      return metadata;
+    } catch (error) {
+      console.error('[Main] Error extracting metadata with music-metadata:', error.message);
+      // Fallback to jsmediatags for compatibility
+      try {
+        return await new Promise((resolve, reject) => {
+          jsmediatags.read(filePath, {
+            onSuccess: (tag) => {
+              const tags = tag.tags;
+              resolve({
+                title: tags.title || null,
+                artist: tags.artist || null,
+                album: tags.album || null
+              });
+            },
+            onError: (err) => {
+              console.error('[Main] jsmediatags also failed:', err.type, err.info);
+              // Always return something, even if empty
+              resolve({ title: null, artist: null, album: null });
+            }
           });
-        },
-        onError: (error) => {
-          console.error('[Main] Error extracting metadata:', error);
-          resolve({ title: null, artist: null, album: null });
-        }
-      });
-    });
+        });
+      } catch (fallbackError) {
+        console.error('[Main] All metadata extraction methods failed:', fallbackError);
+        // Always return something, even if empty
+        return { title: null, artist: null, album: null };
+      }
+    }
   });
 
   // Save preset (.spk file)
@@ -502,17 +760,51 @@ function setActivity(data) {
     const activity = {
       details: data.details || 'Audio Visualizer',
       state: data.state || 'Idle',
-      largeImageKey: 'icon', // You'll need to upload this in Discord Developer Portal
-      largeImageText: 'Audio Visualizer',
       instance: false,
     };
 
-    if (data.startTimestamp) {
-      activity.startTimestamp = data.startTimestamp;
+    // Set assets with cover art URL or fallback
+    activity.assets = {};
+    
+    // Use cover art URL if available (Discord RPC supports direct HTTPS image URLs)
+    if (data.largeImageUrl) {
+      activity.assets.large_image = data.largeImageUrl;
+    } else {
+      // Fallback to default image key
+      activity.assets.large_image = data.largeImageKey || 'audio_file';
+    }
+    
+    // Set large image text
+    activity.assets.large_text = data.largeImageText || (data.pauseStatus === 'yes' 
+      ? `Paused - ${data.containerFormat || 'Unknown Format'}`
+      : data.containerFormat || 'Unknown Format');
+
+    // Set small image (app logo)
+    activity.assets.small_image = data.smallImageKey || 'icon';
+    activity.assets.small_text = data.smallImageText || 'Spectra 1.1.0';
+
+    // Set timestamps
+    if (data.timestamps) {
+      activity.timestamps = {};
+      if (data.pauseStatus === 'yes') {
+        // Paused: show same start and end
+        activity.timestamps.start = data.timestamps.end;
+        activity.timestamps.end = data.timestamps.end;
+      } else {
+        // Playing: show start and end
+        activity.timestamps.start = data.timestamps.start;
+        activity.timestamps.end = data.timestamps.end;
+      }
     }
 
-    if (data.endTimestamp) {
-      activity.endTimestamp = data.endTimestamp;
+    // Set buttons (YouTube search)
+    if (data.youtubeUrl) {
+      activity.buttons = [
+        {
+          label: 'Find Song',
+          url: data.youtubeUrl
+        }
+      ];
     }
 
     // Set activity with type 2 for "Listening"

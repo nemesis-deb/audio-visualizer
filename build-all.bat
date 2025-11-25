@@ -5,7 +5,7 @@ echo ========================================
 echo.
 
 echo [1/3] Building for Windows...
-call npm run build:win
+call yarn build:win
 if %errorlevel% neq 0 (
     echo ERROR: Windows build failed!
     pause
@@ -15,7 +15,7 @@ echo Windows build complete!
 echo.
 
 echo [2/3] Building for macOS...
-call npm run build:mac
+call yarn build:mac
 if %errorlevel% neq 0 (
     echo ERROR: macOS build failed!
     pause
@@ -25,7 +25,7 @@ echo macOS build complete!
 echo.
 
 echo [3/3] Building for Linux...
-call npm run build:linux
+call yarn build:linux
 if %errorlevel% neq 0 (
     echo ERROR: Linux build failed!
     pause

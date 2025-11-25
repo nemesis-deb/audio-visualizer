@@ -1,4 +1,5 @@
 import { Visualizer, settings } from './base.js';
+import { compressFrequencyData } from '../modules/frequency-compressor.js';
 
 // Equalizer Visualizer - Classic equalizer bars with glow
 export class EqualizerVisualizer extends Visualizer {
@@ -28,6 +29,23 @@ export class EqualizerVisualizer extends Visualizer {
         this.ctx.fillStyle = settings.bgColor;
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
+        // Apply compression to prevent bass from "roofing"
+        let compressedData;
+        if (this.frequencyData instanceof Uint8Array) {
+            const compressed = compressFrequencyData(this.frequencyData, {
+                threshold: 0.65,
+                ratio: 6.0,
+                bassRange: 0.15,
+                normalized: false
+            });
+            compressedData = new Uint8Array(compressed.length);
+            for (let i = 0; i < compressed.length; i++) {
+                compressedData[i] = Math.round(compressed[i] * 255);
+            }
+        } else {
+            compressedData = this.frequencyData;
+        }
+
         const barCount = this.settings.barCount;
         const barWidth = (this.canvas.width / barCount) - this.settings.gap;
         const heightScale = this.canvas.height * 0.8;
@@ -39,9 +57,9 @@ export class EqualizerVisualizer extends Visualizer {
         }
 
         for (let i = 0; i < barCount; i++) {
-            // Get frequency data for this bar
-            const dataIndex = Math.floor((i / barCount) * this.frequencyData.length);
-            let value = this.frequencyData[dataIndex] / 255;
+            // Get frequency data for this bar (use compressed data)
+            const dataIndex = Math.floor((i / barCount) * compressedData.length);
+            let value = compressedData[dataIndex] / 255;
             
             // Apply bass boost to lower frequencies
             if (i < barCount * 0.2) {

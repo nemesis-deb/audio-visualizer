@@ -1,5 +1,5 @@
 // Visualizer Manager
-class VisualizerManager {
+export class VisualizerManager {
     constructor() {
         this.visualizers = new Map();
         this.currentVisualizer = null;
@@ -11,7 +11,21 @@ class VisualizerManager {
     }
 
     init(canvas, ctx) {
-        this.visualizers.forEach(viz => viz.init(canvas, ctx));
+        this.visualizers.forEach(viz => {
+            if (viz.init) {
+                viz.init(canvas, ctx);
+            }
+        });
+    }
+
+    initializeAll(ctx, width, height) {
+        // Legacy method for compatibility
+        const canvas = { width, height };
+        this.visualizers.forEach(viz => {
+            if (viz.init) {
+                viz.init(canvas, ctx);
+            }
+        });
     }
 
     setActive(name) {
@@ -32,7 +46,22 @@ class VisualizerManager {
 
     draw() {
         if (this.currentVisualizer) {
-            this.currentVisualizer.draw();
+            // Ensure visualizer is initialized before drawing
+            if (!this.currentVisualizer.canvas || !this.currentVisualizer.ctx) {
+                // Try to initialize if canvas is available
+                const canvas = document.getElementById('visualizerCanvas');
+                if (canvas && canvas.getContext) {
+                    const ctx = canvas.getContext('2d');
+                    if (ctx && this.currentVisualizer.init) {
+                        this.currentVisualizer.init(canvas, ctx);
+                    }
+                }
+            }
+            
+            // Only draw if canvas is available
+            if (this.currentVisualizer.canvas && this.currentVisualizer.ctx) {
+                this.currentVisualizer.draw();
+            }
         }
     }
 
@@ -51,6 +80,8 @@ class VisualizerManager {
     get(name) {
         return this.visualizers.get(name);
     }
-}
 
-module.exports = VisualizerManager;
+    getVisualizerNames() {
+        return Array.from(this.visualizers.keys());
+    }
+}

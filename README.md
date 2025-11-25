@@ -278,7 +278,7 @@ Enable "Open DevTools on Startup" in Settings → Developer for debugging and de
 
 ### Prerequisites
 
-- Node.js 16+ and npm
+- Node.js 16+ and Yarn
 - Git
 
 ### Clone & Install
@@ -286,23 +286,23 @@ Enable "Open DevTools on Startup" in Settings → Developer for debugging and de
 ```bash
 git clone https://github.com/nemesis-deb/spectra.git
 cd spectra
-npm install
+yarn install
 ```
 
 ### Run Development
 
 ```bash
-npm start
+yarn start
 ```
 
 **Linux Note:** On some Linux systems with kernel 6.14+, you may encounter SIGSEGV crashes when running Electron in development mode. If this happens:
 
 1. Build the Linux AppImage first:
    ```bash
-   npm run build:linux
+   yarn build:linux
    ```
 
-2. Then use `npm start` which will automatically use the built version.
+2. Then use `yarn start` which will automatically use the built version.
 
 Alternatively, install libfuse2 to run the AppImage directly:
 ```bash
@@ -314,13 +314,13 @@ sudo apt install libfuse2
 
 ```bash
 # Windows
-npm run build:win
+yarn build:win
 
 # macOS (requires macOS)
-npm run build:mac
+yarn build:mac
 
 # Linux (requires Linux)
-npm run build:linux
+yarn build:linux
 ```
 
 Outputs will be in `dist/` folder.

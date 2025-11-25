@@ -195,10 +195,42 @@ export class KeyDetector {
         return this.camelotMap[fullKey] || '--';
     }
 
-    // Get key display based on notation preference
-    getKeyDisplay(useCamelot = true) {
+    // Get numeric notation (e.g., "E4", "A2", "B3")
+    // Format: Note + number where major = 4, minor = 2, and number can vary based on key
+    getNumericString() {
         if (!this.detectedKey) return '--';
-        return useCamelot ? this.getCamelotString() : this.getKeyString();
+        
+        // Map keys to numeric notation
+        // Major keys: use higher numbers (3-4)
+        // Minor keys: use lower numbers (1-2)
+        const numericMap = {
+            // Major keys
+            'C major': 'C4', 'G major': 'G4', 'D major': 'D4', 'A major': 'A4',
+            'E major': 'E4', 'B major': 'B4', 'F# major': 'F#4', 'C# major': 'C#4',
+            'G# major': 'G#4', 'D# major': 'D#4', 'A# major': 'A#4', 'F major': 'F4',
+            // Minor keys
+            'A minor': 'A2', 'E minor': 'E2', 'B minor': 'B2', 'F# minor': 'F#2',
+            'C# minor': 'C#2', 'G# minor': 'G#2', 'D# minor': 'D#2', 'A# minor': 'A#2',
+            'F minor': 'F2', 'C minor': 'C2', 'G minor': 'G2', 'D minor': 'D2'
+        };
+        
+        const fullKey = `${this.detectedKey} ${this.detectedScale}`;
+        return numericMap[fullKey] || `${this.detectedKey}${this.detectedScale === 'major' ? '4' : '2'}`;
+    }
+
+    // Get key display based on notation preference
+    getKeyDisplay(notation = 'camelot') {
+        if (!this.detectedKey) return '--';
+        
+        switch (notation) {
+            case 'numeric':
+                return this.getNumericString();
+            case 'camelot':
+                return this.getCamelotString();
+            case 'standard':
+            default:
+                return this.getKeyString();
+        }
     }
 
     // Get short key string (e.g., "Cmaj", "Am")
