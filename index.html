@@ -1,277 +1,307 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <title>Spectra</title>
   <link rel="stylesheet" href="src/styles.css">
 </head>
+
 <body>
   <!-- Album Art Background -->
   <div id="albumArtBackground" class="album-art-background"></div>
-  
+
   <div class="app-container">
-  <!-- Sidebar with File Navigator -->
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <h2>Music Library</h2>
-      <div id="fileCount" style="font-size: 12px; color: #888; margin-top: 5px;">No folder selected</div>
-    </div>
-    <div style="padding: 10px; border-bottom: 1px solid #444; background: #1f1f1f;">
-      <div style="display: flex; gap: 5px;">
-        <button id="localFilesTab" class="tab-btn active" style="flex: 1; padding: 8px; background: #00ff88; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 600; color: #000;">Local Files</button>
-        <button id="spotifyTab" class="tab-btn" style="flex: 1; padding: 8px; background: #444; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 600; color: #888;">Spotify</button>
-        <button id="youtubeTab" class="tab-btn" style="flex: 1; padding: 8px; background: #444; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 600; color: #888;">YouTube</button>
+    <!-- Sidebar with File Navigator -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>Music Library</h2>
+        <div id="fileCount" style="font-size: 12px; color: #888; margin-top: 5px;">No folder selected</div>
       </div>
-    </div>
-    <div id="spotifyPanel" class="hidden" style="padding: 15px; border-bottom: 1px solid #444;">
-      <div id="spotifyLogin" style="text-align: center;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin: 10px auto; display: block;">
-          <circle cx="12" cy="12" r="10" stroke="#1DB954" stroke-width="2"/>
-          <path d="M8 11c2.5-1.5 5.5-1.5 8 0M8.5 14c2-1 4-1 6 0M9 17c1.5-0.5 3-0.5 4.5 0" stroke="#1DB954" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        <p style="color: #888; font-size: 13px; margin: 10px 0;">Connect your Spotify account to access your playlists</p>
-        <button id="spotifyLoginBtn" style="width: 100%; background: #1DB954; color: white; padding: 10px; border: none; border-radius: 20px; cursor: pointer; font-weight: 600; font-size: 14px;">Connect Spotify</button>
+      <div style="padding: 10px; border-bottom: 1px solid #444; background: #1f1f1f;">
+        <div style="display: flex; gap: 5px;">
+          <button id="localFilesTab" class="tab-btn active"
+            style="flex: 1; padding: 8px; background: #00ff88; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 600; color: #000;">Local
+            Files</button>
+          <button id="spotifyTab" class="tab-btn"
+            style="flex: 1; padding: 8px; background: #444; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 600; color: #888;">Spotify</button>
+          <button id="youtubeTab" class="tab-btn"
+            style="flex: 1; padding: 8px; background: #444; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 600; color: #888;">YouTube</button>
+        </div>
       </div>
-      <div id="spotifyConnected" class="hidden">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px; background: rgba(29, 185, 84, 0.1); border-radius: 3px;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="#1DB954" stroke-width="2"/>
-            <path d="M8 12l2 2 4-4" stroke="#1DB954" stroke-width="2" stroke-linecap="round"/>
+      <div id="spotifyPanel" class="hidden" style="padding: 15px; border-bottom: 1px solid #444;">
+        <div id="spotifyLogin" style="text-align: center;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin: 10px auto; display: block;">
+            <circle cx="12" cy="12" r="10" stroke="#1DB954" stroke-width="2" />
+            <path d="M8 11c2.5-1.5 5.5-1.5 8 0M8.5 14c2-1 4-1 6 0M9 17c1.5-0.5 3-0.5 4.5 0" stroke="#1DB954"
+              stroke-width="2" stroke-linecap="round" />
           </svg>
-          <div style="flex: 1;">
-            <div id="spotifyUsername" style="color: #1DB954; font-size: 13px; font-weight: 600;"></div>
-            <div style="color: #888; font-size: 11px;">Connected</div>
+          <p style="color: #888; font-size: 13px; margin: 10px 0;">Connect your Spotify account to access your playlists
+          </p>
+          <button id="spotifyLoginBtn"
+            style="width: 100%; background: #1DB954; color: white; padding: 10px; border: none; border-radius: 20px; cursor: pointer; font-weight: 600; font-size: 14px;">Connect
+            Spotify</button>
+        </div>
+        <div id="spotifyConnected" class="hidden">
+          <div
+            style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px; background: rgba(29, 185, 84, 0.1); border-radius: 3px;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#1DB954" stroke-width="2" />
+              <path d="M8 12l2 2 4-4" stroke="#1DB954" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <div style="flex: 1;">
+              <div id="spotifyUsername" style="color: #1DB954; font-size: 13px; font-weight: 600;"></div>
+              <div style="color: #888; font-size: 11px;">Connected</div>
+            </div>
+            <button id="spotifyLogoutBtn"
+              style="padding: 5px 10px; background: transparent; border: 1px solid #444; color: #888; border-radius: 3px; cursor: pointer; font-size: 11px;">Disconnect</button>
           </div>
-          <button id="spotifyLogoutBtn" style="padding: 5px 10px; background: transparent; border: 1px solid #444; color: #888; border-radius: 3px; cursor: pointer; font-size: 11px;">Disconnect</button>
-        </div>
-        <button id="loadPlaylistsBtn" style="width: 100%; background: #00ff88; color: #000; padding: 8px; border: none; border-radius: 3px; cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 10px;">Load Playlists</button>
-        <div style="position: relative; margin-bottom: 10px;">
-          <input type="text" id="spotifySearchInput" placeholder="Search tracks on Spotify..." style="width: 100%; padding: 8px 35px 8px 10px; background: #2a2a2a; border: 1px solid #444; border-radius: 3px; color: #fff; font-size: 13px;">
-          <svg id="spotifySearchBtn" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer;">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="m21 21-4.35-4.35"/>
-          </svg>
-        </div>
-      </div>
-    </div>
-    <div id="youtubePanel" class="hidden" style="padding: 15px; border-bottom: 1px solid #444;">
-      <div style="text-align: center;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin: 10px auto; display: block;">
-          <rect x="2" y="4" width="20" height="16" rx="2" stroke="#FF0000" stroke-width="2"/>
-          <polygon points="10,8 10,16 16,12" fill="#FF0000"/>
-        </svg>
-        <p style="color: #888; font-size: 13px; margin: 10px 0;">Search and play YouTube videos with visualization</p>
-        <div class="youtube-search-container-sidebar" style="margin-top: 15px;">
-          <input
-            type="text"
-            id="youtubeSidebarSearch"
-            placeholder="Search YouTube..."
-            autocomplete="off"
-            style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid #FF0000; border-radius: 5px; color: #fff; font-size: 13px; margin-bottom: 10px;"
-          />
-          <button id="youtubeSidebarSearchBtn" style="width: 100%; background: #FF0000; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 14px;">🔍 Search YouTube</button>
-        </div>
-        <div id="youtubeResultsSidebar" style="margin-top: 15px; max-height: 400px; overflow-y: auto;">
-          <!-- Results will be populated here -->
-        </div>
-      </div>
-    </div>
-    <div class="folder-path" id="folderPath">
-      <span class="path-segment" data-path="">Home</span>
-    </div>
-    <div class="search-input-wrapper">
-      <input type="text" id="searchInput" class="search-input" placeholder="Search songs...">
-    </div>
-    <div class="file-browser" id="fileBrowser">
-      <div class="empty-state">
-        Click "Browse Folder" to select a music folder
-      </div>
-    </div>
-    <div style="padding: 10px; border-top: 1px solid #444;">
-      <button class="browse-btn browse-folder-btn" id="browseFolderBtn">Browse Folder</button>
-      <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
-        <input type="checkbox" id="includeSubfoldersCheckbox" style="cursor: pointer;">
-        <label for="includeSubfoldersCheckbox" style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none;">Include subfolders</label>
-      </div>
-    </div>
-  </div>
-
-  <!-- Main Content Area -->
-  <div class="main-content">
-    
-    <div class="content-wrapper">
-      
-    <!-- Audio Controls at Top (full width) -->
-    <div class="header">
-      <div id="nowPlayingArt" class="now-playing-art">
-        <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="#00ff88" stroke-width="2">
-          <path d="M9 18V5l12-2v13"/>
-          <circle cx="6" cy="18" r="3"/>
-          <circle cx="18" cy="16" r="3"/>
-        </svg>
-      </div>
-      <div class="now-playing-info">
-        <div class="now-playing-title" id="nowPlayingTitle">No song playing</div>
-        <div class="now-playing-artist" id="nowPlayingArtist"></div>
-      </div>
-      <button id="queueBtn" class="queue-btn" title="Queue">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="8" y1="6" x2="21" y2="6"/>
-          <line x1="8" y1="12" x2="21" y2="12"/>
-          <line x1="8" y1="18" x2="21" y2="18"/>
-          <line x1="3" y1="6" x2="3.01" y2="6"/>
-          <line x1="3" y1="12" x2="3.01" y2="12"/>
-          <line x1="3" y1="18" x2="3.01" y2="18"/>
-        </svg>
-        <span>Queue</span>
-      </button>
-    </div>
-
-    <!-- Controls Bar -->
-    <div class="controls-bar">
-      <div class="control-group">
-        <button id="prevBtn" disabled class="icon-btn" title="Previous Track">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-          </svg>
-        </button>
-        <button id="playBtn" disabled class="icon-btn" title="Play">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5 3 19 12 5 21 5 3"/>
-          </svg>
-        </button>
-        <button id="pauseBtn" disabled class="icon-btn" title="Pause">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="4" width="4" height="16"/>
-            <rect x="14" y="4" width="4" height="16"/>
-          </svg>
-        </button>
-        <button id="nextBtn" disabled class="icon-btn" title="Next Track">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-          </svg>
-        </button>
-      </div>
-      
-      <div class="control-group">
-        <button id="shuffleBtn" class="icon-btn toggle-btn" title="Shuffle">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/>
-          </svg>
-        </button>
-        <button id="repeatBtn" class="icon-btn toggle-btn" title="Repeat Off">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 1l4 4-4 4"/>
-            <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
-            <path d="M7 23l-4-4 4-4"/>
-            <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
-          </svg>
-        </button>
-      </div>
-      
-      <div class="time-display">
-        <span id="currentTime">0:00</span>
-        <span class="time-separator">/</span>
-        <span id="duration">0:00</span>
-      </div>
-      
-      <div class="progress-bar-container">
-        <div class="progress-bar" id="progressBar">
-          <div class="progress-fill" id="progressFill"></div>
-          <div class="progress-handle" id="progressHandle"></div>
-        </div>
-      </div>
-      
-      <div class="divider"></div>
-      
-      <div class="control-group volume-control">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-        </svg>
-        <input type="range" id="volumeSlider" min="0" max="100" value="100" title="Volume">
-        <span id="volumeValue">100%</span>
-      </div>
-      
-      <div class="control-group speed-control">
-        <label>Speed:</label>
-        <select id="speedSelect" title="Playback Speed">
-          <option value="0.5">0.5x</option>
-          <option value="0.75">0.75x</option>
-          <option value="1" selected>1x</option>
-          <option value="1.25">1.25x</option>
-          <option value="1.5">1.5x</option>
-          <option value="2">2x</option>
-        </select>
-      </div>
-      
-      <span id="bpmDisplay" style="display: inline; color: #00ff88; font-weight: 600; margin-left: 15px; padding: 4px 8px; background: rgba(0, 255, 136, 0.1); border-radius: 3px;">-- BPM</span>
-      <span id="keyDisplay" style="display: inline; color: #00ff88; font-weight: 600; margin-left: 10px; padding: 4px 8px; background: rgba(0, 255, 136, 0.1); border-radius: 3px;">-- Key</span>
-    </div>
-    
-    <!-- Bottom Section: Canvas + Right Panel -->
-    <div class="bottom-section">
-      
-      <!-- Canvas Container (center) -->
-      <div class="canvas-container" id="canvasContainer">
-        <canvas id="visualizer" width="1200" height="600"></canvas>
-        <button id="fullscreenBtn" class="fullscreen-btn" title="Toggle Fullscreen">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
-          </svg>
-        </button>
-      </div>
-      
-      <!-- Visualizer Panel (right side) -->
-      <div class="right-panel" id="rightPanel">
-        <div class="right-panel-header">
-          <h3>Visualizer</h3>
-        </div>
-        
-        <div class="right-panel-section">
-          <label>Type</label>
-          <select id="visualizerSelect">
-            <option value="Waveform">Waveform</option>
-          </select>
-        </div>
-        
-        <div class="right-panel-section" id="visualizerTweaksPanel">
-          <label>Settings</label>
-          <div class="tweaks-content" id="visualizerTweaksContent">
-            <p class="empty-tweaks">No custom settings</p>
+          <button id="loadPlaylistsBtn"
+            style="width: 100%; background: #00ff88; color: #000; padding: 8px; border: none; border-radius: 3px; cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 10px;">Load
+            Playlists</button>
+          <div style="position: relative; margin-bottom: 10px;">
+            <input type="text" id="spotifySearchInput" placeholder="Search tracks on Spotify..."
+              style="width: 100%; padding: 8px 35px 8px 10px; background: #2a2a2a; border: 1px solid #444; border-radius: 3px; color: #fff; font-size: 13px;">
+            <svg id="spotifySearchBtn" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#888"
+              stroke-width="2"
+              style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer;">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
           </div>
         </div>
-
-        <!-- Preset buttons -->
-        <div class="preset-buttons-section">
-            <button class="preset-btn-panel" id="savePresetBtnPanel" title="Save current settings as preset">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              Save
-            </button>
-            <button class="preset-btn-panel" id="loadPresetBtnPanel" title="Load preset from file">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-              </svg>
-              Load
-            </button>
-        </div>
-        
-        <!-- Status at bottom -->
-        <div class="right-panel-footer">
-          <span id="status">No audio source</span>
+      </div>
+      <div id="youtubePanel" class="hidden" style="padding: 15px; border-bottom: 1px solid #444;">
+        <div style="text-align: center;">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style="margin: 10px auto; display: block;">
+            <rect x="2" y="4" width="20" height="16" rx="2" stroke="#FF0000" stroke-width="2" />
+            <polygon points="10,8 10,16 16,12" fill="#FF0000" />
+          </svg>
+          <p style="color: #888; font-size: 13px; margin: 10px 0;">Search and play YouTube videos with visualization</p>
+          <div class="youtube-search-container-sidebar" style="margin-top: 15px;">
+            <input type="text" id="youtubeSidebarSearch" placeholder="Search YouTube..." autocomplete="off"
+              style="width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid #FF0000; border-radius: 5px; color: #fff; font-size: 13px; margin-bottom: 10px;" />
+            <button id="youtubeSidebarSearchBtn"
+              style="width: 100%; background: #FF0000; color: white; padding: 10px; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 14px;">🔍
+              Search YouTube</button>
+          </div>
+          <div id="youtubeResultsSidebar" style="margin-top: 15px; max-height: 400px; overflow-y: auto;">
+            <!-- Results will be populated here -->
+          </div>
         </div>
       </div>
-      
-    </div> <!-- end bottom-section -->
-    
-    </div> <!-- end content-wrapper -->
-    
-  </div> <!-- end main-content -->
-    
+      <div class="folder-path" id="folderPath">
+        <span class="path-segment" data-path="">Home</span>
+      </div>
+      <div class="search-input-wrapper">
+        <input type="text" id="searchInput" class="search-input" placeholder="Search songs...">
+      </div>
+      <div class="file-browser" id="fileBrowser">
+        <div class="empty-state">
+          Click "Browse Folder" to select a music folder
+        </div>
+      </div>
+      <div style="padding: 10px; border-top: 1px solid #444;">
+        <button class="browse-btn browse-folder-btn" id="browseFolderBtn">Browse Folder</button>
+        <div style="margin-top: 10px; display: flex; align-items: center; gap: 8px;">
+          <input type="checkbox" id="includeSubfoldersCheckbox" style="cursor: pointer;">
+          <label for="includeSubfoldersCheckbox"
+            style="font-size: 13px; color: #aaa; cursor: pointer; user-select: none;">Include subfolders</label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+
+      <div class="content-wrapper">
+
+        <!-- Audio Controls at Top (full width) -->
+        <div class="header">
+          <div id="nowPlayingArt" class="now-playing-art">
+            <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="var(--theme-primary)" stroke-width="2">
+              <path d="M9 18V5l12-2v13" />
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="16" r="3" />
+            </svg>
+          </div>
+          <div class="now-playing-info">
+            <div class="now-playing-title" id="nowPlayingTitle">No song playing</div>
+            <div class="now-playing-artist" id="nowPlayingArtist"></div>
+          </div>
+          <div class="gain-controls-container" style="margin-left: auto; margin-right: 8px;">
+            <div class="gain-controls">
+              <button id="gainUpBtn" class="gain-btn" title="Increase gain (+3dB)">▲</button>
+              <button id="gainDownBtn" class="gain-btn" title="Decrease gain (-3dB)">▼</button>
+            </div>
+            <span id="gainDisplay" class="gain-display">0dB</span>
+          </div>
+          <div class="volume-history-container" style="margin-right: 15px;">
+            <canvas id="volumeHistoryCanvas" width="150" height="30"></canvas>
+          </div>
+          <button id="queueBtn" class="queue-btn" title="Queue">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            <span>Queue</span>
+          </button>
+        </div>
+
+        <!-- Controls Bar -->
+        <div class="controls-bar">
+          <div class="control-group">
+            <button id="prevBtn" disabled class="icon-btn" title="Previous Track">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" />
+              </svg>
+            </button>
+            <button id="playBtn" disabled class="icon-btn" title="Play">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+            </button>
+            <button id="pauseBtn" disabled class="icon-btn" title="Pause">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="6" y="4" width="4" height="16" />
+                <rect x="14" y="4" width="4" height="16" />
+              </svg>
+            </button>
+            <button id="nextBtn" disabled class="icon-btn" title="Next Track">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="control-group">
+            <button id="shuffleBtn" class="icon-btn toggle-btn" title="Shuffle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
+              </svg>
+            </button>
+            <button id="repeatBtn" class="icon-btn toggle-btn" title="Repeat Off">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 1l4 4-4 4" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <path d="M7 23l-4-4 4-4" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+              </svg>
+            </button>
+          </div>
+
+          <div class="time-display">
+            <span id="currentTime">0:00</span>
+            <span class="time-separator">/</span>
+            <span id="duration">0:00</span>
+          </div>
+
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progressBar">
+              <div class="progress-fill" id="progressFill"></div>
+              <div class="progress-handle" id="progressHandle"></div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="control-group volume-control">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+            </svg>
+            <input type="range" id="volumeSlider" min="0" max="100" value="100" title="Volume">
+            <span id="volumeValue">100%</span>
+          </div>
+
+          <div class="control-group speed-control">
+            <label>Speed:</label>
+            <select id="speedSelect" title="Playback Speed">
+              <option value="0.5">0.5x</option>
+              <option value="0.75">0.75x</option>
+              <option value="1" selected>1x</option>
+              <option value="1.25">1.25x</option>
+              <option value="1.5">1.5x</option>
+              <option value="2">2x</option>
+            </select>
+          </div>
+
+          <span id="bpmDisplay"
+            style="display: inline; color: var(--theme-primary); font-weight: 600; margin-left: 15px; padding: 4px 8px; background: rgba(var(--theme-primary-rgb), 0.1); border-radius: 3px;">--
+            BPM</span>
+          <span id="keyDisplay"
+            style="display: inline; color: var(--theme-primary); font-weight: 600; margin-left: 10px; padding: 4px 8px; background: rgba(var(--theme-primary-rgb), 0.1); border-radius: 3px;">--
+            Key</span>
+        </div>
+
+        <!-- Bottom Section: Canvas + Right Panel -->
+        <div class="bottom-section">
+
+          <!-- Canvas Container (center) -->
+          <div class="canvas-container" id="canvasContainer">
+            <canvas id="visualizer" width="1200" height="600"></canvas>
+            <button id="fullscreenBtn" class="fullscreen-btn" title="Toggle Fullscreen">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path
+                  d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Visualizer Panel (right side) -->
+          <div class="right-panel" id="rightPanel">
+            <div class="right-panel-header">
+              <h3>Visualizer</h3>
+            </div>
+
+            <div class="right-panel-section">
+              <label>Type</label>
+              <select id="visualizerSelect">
+                <option value="Waveform">Waveform</option>
+              </select>
+            </div>
+
+            <div class="right-panel-section" id="visualizerTweaksPanel">
+              <label>Settings</label>
+              <div class="tweaks-content" id="visualizerTweaksContent">
+                <p class="empty-tweaks">No custom settings</p>
+              </div>
+            </div>
+
+            <!-- Preset buttons -->
+            <div class="preset-buttons-section">
+              <button class="preset-btn-panel" id="savePresetBtnPanel" title="Save current settings as preset">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+                Save
+              </button>
+              <button class="preset-btn-panel" id="loadPresetBtnPanel" title="Load preset from file">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 15v4c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                </svg>
+                Load
+              </button>
+            </div>
+
+            <!-- Status at bottom -->
+            <div class="right-panel-footer">
+              <span id="status">No audio source</span>
+            </div>
+          </div>
+
+        </div> <!-- end bottom-section -->
+
+      </div> <!-- end content-wrapper -->
+
+    </div> <!-- end main-content -->
+
     <!-- Queue Panel -->
     <div class="queue-panel hidden" id="queuePanel">
       <div class="queue-header">
@@ -297,11 +327,52 @@
           </button>
         </div>
         <div class="settings-modal-body">
-          <div class="settings-section">
+          <!-- Settings Sidebar -->
+          <div class="settings-sidebar">
+            <button class="settings-category active" data-category="appearance">
+              <span>Appearance</span>
+            </button>
+            <button class="settings-category" data-category="performance">
+              <span>Performance</span>
+            </button>
+            <button class="settings-category" data-category="beat-detection">
+              <span>Beat Detection</span>
+            </button>
+            <button class="settings-category" data-category="display">
+              <span>Display</span>
+            </button>
+            <button class="settings-category" data-category="album-art">
+              <span>Album Art</span>
+            </button>
+            <button class="settings-category" data-category="developer">
+              <span>Developer</span>
+            </button>
+            <button class="settings-category" data-category="visualizer" id="visualizerCategoryBtn" style="display: none;">
+              <span>Visualizer</span>
+            </button>
+          </div>
+          <!-- Settings Content -->
+          <div class="settings-content">
+          <div class="settings-section" data-category="appearance">
             <h3>Appearance</h3>
             <div class="settings-grid">
               <div class="setting-item">
-                <label>Primary Color</label>
+                <label>Color Theme</label>
+                <select id="colorTheme" class="setting-select">
+                  <option value="green" selected>Green (Default)</option>
+                  <option value="blue">Blue</option>
+                  <option value="purple">Purple</option>
+                  <option value="red">Red</option>
+                  <option value="orange">Orange</option>
+                  <option value="cyan">Cyan</option>
+                  <option value="pink">Pink</option>
+                  <option value="yellow">Yellow</option>
+                  <option value="custom">Custom Color</option>
+                </select>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Choose a color theme for the entire app</p>
+              </div>
+              <div class="setting-item" id="customColorContainer" style="display: none;">
+                <label>Custom Primary Color</label>
                 <div class="setting-control">
                   <input type="color" id="primaryColor" value="#00ff88">
                   <span id="colorValue">#00ff88</span>
@@ -335,7 +406,7 @@
             </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-category="performance" style="display: none;">
             <h3>Performance</h3>
             <div class="settings-grid">
               <div class="setting-item">
@@ -349,15 +420,19 @@
                   <option value="3840x2160">3840 × 2160 (4K)</option>
                   <option value="custom">Custom...</option>
                 </select>
-                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Higher resolutions provide better quality but may impact performance</p>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Higher resolutions provide better quality
+                  but may impact performance</p>
               </div>
               <div class="setting-item" id="customResolutionContainer" style="display: none;">
                 <label>Custom Resolution</label>
                 <div style="display: flex; gap: 10px; align-items: center;">
-                  <input type="number" id="customWidth" placeholder="Width" min="400" max="7680" value="1200" style="width: 100px; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 3px;">
+                  <input type="number" id="customWidth" placeholder="Width" min="400" max="7680" value="1200"
+                    style="width: 100px; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 3px;">
                   <span style="color: #666;">×</span>
-                  <input type="number" id="customHeight" placeholder="Height" min="200" max="4320" value="600" style="width: 100px; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 3px;">
-                  <button id="applyCustomResolution" style="padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Apply</button>
+                  <input type="number" id="customHeight" placeholder="Height" min="200" max="4320" value="600"
+                    style="width: 100px; padding: 8px; background: #2a2a2a; border: 1px solid #444; color: #fff; border-radius: 3px;">
+                  <button id="applyCustomResolution"
+                    style="padding: 8px 16px; background: #00ff88; color: #000; border: none; border-radius: 3px; cursor: pointer; font-weight: 600;">Apply</button>
                 </div>
               </div>
               <div class="setting-item">
@@ -365,12 +440,25 @@
                   <input type="checkbox" id="gpuAcceleration" checked>
                   <span>GPU Acceleration</span>
                 </label>
-                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Enable hardware acceleration for smoother visuals</p>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Enable hardware acceleration for smoother
+                  visuals</p>
+              </div>
+              <div class="setting-item">
+                <label>FPS Cap</label>
+                <select id="fpsCap" class="setting-select">
+                  <option value="unlimited" selected>Unlimited</option>
+                  <option value="144">144 FPS</option>
+                  <option value="120">120 FPS</option>
+                  <option value="60">60 FPS</option>
+                  <option value="30">30 FPS</option>
+                  <option value="24">24 FPS</option>
+                </select>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Limit frame rate to reduce CPU/GPU usage</p>
               </div>
             </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-category="developer" style="display: none;">
             <h3>Developer</h3>
             <div class="settings-grid">
               <div class="setting-item">
@@ -378,12 +466,13 @@
                   <input type="checkbox" id="openDevToolsOnStartup">
                   <span>Open DevTools on Startup</span>
                 </label>
-                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Automatically open developer tools when app starts (requires restart)</p>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Automatically open developer tools when
+                  app starts (requires restart)</p>
               </div>
             </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-category="album-art" style="display: none;">
             <h3>Album Art</h3>
             <div class="settings-grid">
               <div class="setting-item">
@@ -391,12 +480,13 @@
                   <input type="checkbox" id="albumArtBackground" checked>
                   <span>Show Album Art in File List</span>
                 </label>
-                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Display album art thumbnails instead of music note icons</p>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Display album art thumbnails instead of
+                  music note icons</p>
               </div>
             </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-category="beat-detection" style="display: none;">
             <h3>Beat Detection</h3>
             <div class="settings-grid">
               <div class="setting-item">
@@ -416,7 +506,7 @@
             </div>
           </div>
 
-          <div class="settings-section">
+          <div class="settings-section" data-category="display" style="display: none;">
             <h3>Display</h3>
             <div class="settings-grid">
               <div class="setting-item">
@@ -424,16 +514,18 @@
                   <input type="checkbox" id="useCamelotNotation" checked>
                   <span>Use Camelot Notation (8B, 5A)</span>
                 </label>
-                <small style="color: #888; display: block; margin-top: 4px;">Uncheck for standard notation (C major, A minor)</small>
+                <small style="color: #888; display: block; margin-top: 4px;">Uncheck for standard notation (C major, A
+                  minor)</small>
               </div>
             </div>
           </div>
 
-          <div class="settings-section" id="customSettingsSection" style="display: none;">
+          <div class="settings-section" id="customSettingsSection" data-category="visualizer" style="display: none;">
             <h3 id="customSettingsTitle">Visualizer Settings</h3>
             <div class="settings-grid" id="customSettings">
               <!-- Custom settings will be populated here -->
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -443,8 +535,9 @@
     <div class="settings-panel hidden" id="settingsPanel">
       <h4 style="margin: 0 0 15px 0; color: #00ff88; display: flex; align-items: center; gap: 8px;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/>
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M12 1v6m0 6v6M5.64 5.64l4.24 4.24m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24" />
         </svg>
         Global Settings
       </h4>
@@ -475,7 +568,7 @@
           </label>
         </div>
       </div>
-      
+
       <h4 style="margin: 20px 0 15px 0; color: #00ff88;">Beat Detection</h4>
       <div class="settings-content">
         <div class="setting-item">
@@ -492,18 +585,20 @@
           <input type="range" id="beatDuration" min="0.85" max="0.98" step="0.01" value="0.92">
         </div>
       </div>
-      
+
       <h4 style="margin: 20px 0 15px 0; color: #00ff88;" id="customSettingsTitle">Visualizer Settings</h4>
       <div class="settings-content" id="customSettings" style="display: none;">
         <!-- Custom settings will be populated here -->
       </div>
     </div>
 
-    </div>
+  </div>
   </div>
 
   <!-- YouTube Player Container (small, visible in corner) -->
-  <div id="youtube-player-container" style="display: none; position: fixed; bottom: 10px; right: 10px; width: 320px; height: 180px; z-index: 9999; border: 2px solid #FF0000; border-radius: 5px; overflow: hidden; background: #000;"></div>
+  <div id="youtube-player-container"
+    style="display: none; position: fixed; bottom: 10px; right: 10px; width: 320px; height: 180px; z-index: 9999; border: 2px solid #FF0000; border-radius: 5px; overflow: hidden; background: #000;">
+  </div>
 
   <!-- Spotify Web Playback SDK removed - using API for metadata only -->
   <script src="src/js/youtube-search.js"></script>
@@ -511,4 +606,5 @@
   <script type="module" src="src/js/renderer.js"></script>
   <script src="src/js/youtube-integration.js"></script>
 </body>
+
 </html>

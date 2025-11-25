@@ -402,7 +402,7 @@ function setupIPCHandlers() {
       });
 
       // Find best audio format
-      const audioFormats = result.formats.filter(f => 
+      const audioFormats = result.formats.filter(f =>
         f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
       );
 
@@ -847,8 +847,7 @@ async function downloadTrackFromYouTube(event, trackInfo) {
       noPlaylist: true,
       extractorArgs: 'youtube:player_client=default',
       noWarnings: true,
-      addMetadata: true,
-      metadataFromTitle: '%(artist)s - %(title)s'
+      addMetadata: true
     });
 
     // Find the downloaded file
@@ -877,7 +876,13 @@ async function downloadTrackFromYouTube(event, trackInfo) {
         const command = ffmpeg(downloadedPath)
           .audioBitrate(320)
           .audioCodec('libmp3lame')
-          .toFormat('mp3');
+          .toFormat('mp3')
+          .outputOptions([
+            '-id3v2_version', '3',
+            '-metadata', `title=${title}`,
+            '-metadata', `artist=${artist}`,
+            '-metadata', `album=${album || ''}`
+          ]);
 
         // Add album art if available
         if (thumbnailPath && fs.existsSync(thumbnailPath)) {
@@ -886,7 +891,6 @@ async function downloadTrackFromYouTube(event, trackInfo) {
               '-map 0:a',
               '-map 1:0',
               '-c:v copy',
-              '-id3v2_version 3',
               '-metadata:s:v title="Album cover"',
               '-metadata:s:v comment="Cover (front)"'
             ]);

@@ -24,6 +24,7 @@ import { KeyDetector } from './modules/key-detector.js';
 import { SpotifyIntegration } from './modules/spotify-integration.js';
 import { AlbumArtManager } from './modules/album-art.js';
 import { PresetManager } from './modules/preset-manager.js';
+import { VolumeHistoryVisualizer } from './modules/volume-history.js';
 
 console.log('Renderer process loaded!');
 
@@ -52,6 +53,66 @@ const keyDetector = new KeyDetector();
 const spotify = new SpotifyIntegration();
 const albumArtManager = new AlbumArtManager();
 const presetManager = new PresetManager();
+const volumeHistoryVisualizer = new VolumeHistoryVisualizer('volumeHistoryCanvas', null);
+
+// Gain control state
+let currentGainDB = 0;
+const gainDisplay = document.getElementById('gainDisplay');
+const gainUpBtn = document.getElementById('gainUpBtn');
+const gainDownBtn = document.getElementById('gainDownBtn');
+
+// Load saved gain
+const savedGain = localStorage.getItem('audioGainDB');
+if (savedGain !== null) {
+    currentGainDB = parseFloat(savedGain);
+    if (gainDisplay) gainDisplay.textContent = `${currentGainDB > 0 ? '+' : ''}${currentGainDB}dB`;
+}
+
+// Gain button handlers
+if (gainUpBtn) {
+    gainUpBtn.addEventListener('click', () => {
+        currentGainDB += 3;
+        if (currentGainDB > 24) currentGainDB = 24; // Max +24dB
+        applyGain();
+    });
+}
+
+if (gainDownBtn) {
+    gainDownBtn.addEventListener('click', () => {
+        currentGainDB -= 3;
+        if (currentGainDB < -24) currentGainDB = -24; // Min -24dB
+        applyGain();
+    });
+}
+
+function applyGain() {
+    // Update display
+    if (gainDisplay) {
+        gainDisplay.textContent = `${currentGainDB > 0 ? '+' : ''}${currentGainDB}dB`;
+    }
+
+    // Apply to audio (dB to linear: gain = 10^(dB/20))
+    const linearGain = Math.pow(10, currentGainDB / 20);
+
+    // Apply to dB gain node (affects visualizers)
+    if (dbGainNode) {
+        dbGainNode.gain.value = linearGain;
+        console.log('Applied dB gain:', currentGainDB, 'dB (linear:', linearGain, ')');
+    }
+
+    // Also apply to window.dbGainNode if it exists (for external audio)
+    if (window.dbGainNode) {
+        window.dbGainNode.gain.value = linearGain;
+    }
+
+    // Save to localStorage
+    localStorage.setItem('audioGainDB', currentGainDB.toString());
+}
+
+// Apply saved gain when audio is ready (always apply to ensure sync)
+setTimeout(() => {
+    applyGain();
+}, 1000);
 
 // Metadata cache
 const metadataCache = new Map();
@@ -130,9 +191,26 @@ window.audioManager = {
             }
             analyser = window.analyser;
 
+            // Create separate analyser for volume history (affected by dB gain)
+            if (!window.volumeHistoryAnalyser) {
+                window.volumeHistoryAnalyser = ctx.createAnalyser();
+                window.volumeHistoryAnalyser.fftSize = 2048;
+            }
+            volumeHistoryAnalyser = window.volumeHistoryAnalyser;
+
+            // Create dB gain node for visualizer control
+            if (!window.dbGainNode) {
+                window.dbGainNode = ctx.createGain();
+            }
+            // Always apply the current gain value (use currentGainDB which is already synced)
+            window.dbGainNode.gain.value = Math.pow(10, currentGainDB / 20);
+            dbGainNode = window.dbGainNode;
+
             if (!window.gainNode) {
                 window.gainNode = ctx.createGain();
-                window.gainNode.gain.value = volume ?? 1.0;
+                // Use saved volume or provided volume, default to 1.0
+                const savedVolume = parseFloat(localStorage.getItem('audioVolume')) || volume || 1.0;
+                window.gainNode.gain.value = savedVolume;
             }
             gainNode = window.gainNode;
 
@@ -143,9 +221,18 @@ window.audioManager = {
 
             this.externalAudio = mediaElement;
             this.externalAudioSource = ctx.createMediaElementSource(mediaElement);
+            // Connect main visualizer: source → analyser → volumeGain → destination (not affected by dB gain)
             this.externalAudioSource.connect(analyser);
             analyser.connect(gainNode);
             gainNode.connect(ctx.destination);
+
+            // Connect volume history: source → dbGain → volumeHistoryAnalyser (affected by dB gain)
+            this.externalAudioSource.connect(dbGainNode);
+            dbGainNode.connect(volumeHistoryAnalyser);
+
+            // Start volume history visualizer with its own analyser
+            volumeHistoryVisualizer.updateAnalyser(volumeHistoryAnalyser);
+            volumeHistoryVisualizer.start();
 
             // Hook element events to update UI & progress
             const onPlay = () => {
@@ -228,10 +315,13 @@ let searchQuery = '';
 let startTime = 0;
 let pauseTime = 0;
 let animationFrameId = null;
+let fpsCap = null; // null = unlimited, number = target FPS
+let fpsCapLastFrameTime = 0; // For FPS capping timing
 let shuffleMode = false;
 let repeatMode = 'off'; // 'off', 'one', 'all'
 let playbackRate = 1.0;
-let volume = 1.0;
+// Load saved volume from localStorage
+let volume = parseFloat(localStorage.getItem('audioVolume')) || 1.0;
 let gainNode = null;
 let playbackQueue = [];
 let manualStop = false; // Flag to distinguish manual stop from natural end
@@ -257,15 +347,29 @@ console.log('AudioContext created:', audioContext.state);
 console.log('Canvas 2D context created with GPU acceleration hints');
 console.log('Note: 2D canvas is primarily CPU-bound. For better GPU usage, use 3D visualizers (DNA Helix, Tunnel).');
 
-// Create gain node for volume control
-gainNode = audioContext.createGain();
-gainNode.gain.value = 1.0;
+// Create gain node for dB control (affects visualizers)
+// Note: currentGainDB is already loaded from localStorage above
+let dbGainNode = audioContext.createGain();
+// Initialize with currentGainDB value (which was loaded from localStorage if available)
+dbGainNode.gain.value = Math.pow(10, currentGainDB / 20);
+window.dbGainNode = dbGainNode; // Make available globally
 
-// Create analyser node
+// Create gain node for volume control (affects output only)
+gainNode = audioContext.createGain();
+gainNode.gain.value = volume; // Use saved volume
+
+// Create analyser node for main visualizer (not affected by dB gain)
 var analyser = audioContext.createAnalyser();
 analyser.fftSize = 2048; // Must be power of 2 (256, 512, 1024, 2048, etc.)
 analyser.smoothingTimeConstant = 0.8; // 0-1, higher = smoother
 console.log('AnalyserNode created - fftSize:', analyser.fftSize, 'smoothing:', analyser.smoothingTimeConstant);
+
+// Create separate analyser for volume history (affected by dB gain)
+var volumeHistoryAnalyser = audioContext.createAnalyser();
+volumeHistoryAnalyser.fftSize = 2048;
+volumeHistoryAnalyser.smoothingTimeConstant = 0.8;
+console.log('VolumeHistoryAnalyserNode created');
+window.volumeHistoryAnalyser = volumeHistoryAnalyser; // Make available globally
 
 // Create data arrays for analysis
 const bufferLength = analyser.frequencyBinCount; // Half of fftSize
@@ -633,13 +737,32 @@ repeatBtn.addEventListener('click', () => {
 });
 
 // Volume control
-volumeSlider.addEventListener('input', (e) => {
-    volume = e.target.value / 100;
-    gainNode.gain.value = volume;
-    volumeValue.textContent = `${e.target.value}%`;
-    // Update CSS variable for gradient
-    volumeSlider.style.setProperty('--volume-percent', `${e.target.value}%`);
-});
+if (volumeSlider) {
+    // Load saved volume on startup
+    const savedVolume = parseFloat(localStorage.getItem('audioVolume'));
+    if (savedVolume !== null && !isNaN(savedVolume)) {
+        volume = savedVolume;
+        const savedVolumePercent = Math.round(volume * 100);
+        volumeSlider.value = savedVolumePercent;
+        if (volumeValue) {
+            volumeValue.textContent = `${savedVolumePercent}%`;
+        }
+        volumeSlider.style.setProperty('--volume-percent', `${savedVolumePercent}%`);
+        if (gainNode) {
+            gainNode.gain.value = volume;
+        }
+    }
+
+    volumeSlider.addEventListener('input', (e) => {
+        volume = e.target.value / 100;
+        gainNode.gain.value = volume;
+        volumeValue.textContent = `${e.target.value}%`;
+        // Update CSS variable for gradient
+        volumeSlider.style.setProperty('--volume-percent', `${e.target.value}%`);
+        // Save to localStorage
+        localStorage.setItem('audioVolume', volume.toString());
+    });
+}
 
 // Speed control
 speedSelect.addEventListener('change', (e) => {
@@ -679,15 +802,15 @@ if (closeQueueBtn) {
 if (fullscreenBtn && canvasContainer) {
     fullscreenBtn.addEventListener('click', () => {
         canvasContainer.classList.toggle('fullscreen');
-        
+
         // Update button icon based on state
         const isFullscreen = canvasContainer.classList.contains('fullscreen');
-        fullscreenBtn.innerHTML = isFullscreen 
+        fullscreenBtn.innerHTML = isFullscreen
             ? '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>'
             : '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
-        
+
         fullscreenBtn.title = isFullscreen ? 'Exit Fullscreen' : 'Toggle Fullscreen';
-        
+
         // Resize canvas when toggling fullscreen
         if (visualizerManager && visualizerManager.getCurrent()) {
             setTimeout(() => {
@@ -695,14 +818,14 @@ if (fullscreenBtn && canvasContainer) {
             }, 100);
         }
     });
-    
+
     // ESC key to exit fullscreen
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && canvasContainer.classList.contains('fullscreen')) {
             canvasContainer.classList.remove('fullscreen');
             fullscreenBtn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
             fullscreenBtn.title = 'Toggle Fullscreen';
-            
+
             if (visualizerManager && visualizerManager.getCurrent()) {
                 setTimeout(() => {
                     visualizerManager.getCurrent().resize();
@@ -839,10 +962,14 @@ progressBar.addEventListener('click', (e) => {
         audioSource.buffer = audioBuffer;
         audioSource.playbackRate.value = playbackRate;
 
-        // Connect: source → analyser → gain → destination
+        // Connect main visualizer: source → analyser → volumeGain → destination (not affected by dB gain)
         audioSource.connect(analyser);
         analyser.connect(gainNode);
         gainNode.connect(audioContext.destination);
+
+        // Connect volume history: source → dbGain → volumeHistoryAnalyser (affected by dB gain)
+        audioSource.connect(dbGainNode);
+        dbGainNode.connect(volumeHistoryAnalyser);
 
         // Handle when audio ends (same as play button)
         audioSource.onended = () => {
@@ -987,6 +1114,37 @@ if (closeSettingsBtn) {
     closeSettingsBtn.addEventListener('click', closeSettingsModal);
 }
 
+// Settings category switching
+function switchSettingsCategory(categoryName) {
+    // Update active state
+    const settingsCategories = document.querySelectorAll('.settings-category');
+    settingsCategories.forEach(cat => {
+        if (cat.getAttribute('data-category') === categoryName) {
+            cat.classList.add('active');
+        } else {
+            cat.classList.remove('active');
+        }
+    });
+
+    // Show/hide corresponding settings section
+    const allSections = document.querySelectorAll('.settings-section[data-category]');
+    allSections.forEach(section => {
+        if (section.getAttribute('data-category') === categoryName) {
+            section.style.display = 'block';
+        } else {
+            section.style.display = 'none';
+        }
+    });
+}
+
+const settingsCategories = document.querySelectorAll('.settings-category');
+settingsCategories.forEach(category => {
+    category.addEventListener('click', () => {
+        const categoryName = category.getAttribute('data-category');
+        switchSettingsCategory(categoryName);
+    });
+});
+
 // Close on overlay click
 if (settingsModal) {
     settingsModal.querySelector('.settings-modal-overlay')?.addEventListener('click', closeSettingsModal);
@@ -1019,7 +1177,7 @@ if (canvasResolutionSelect) {
     } else {
         canvasResolutionSelect.value = savedResolution;
     }
-    
+
     // Apply saved resolution on load
     const [width, height] = savedResolution.split('x').map(Number);
     canvas.width = width;
@@ -1030,7 +1188,7 @@ if (canvasResolutionSelect) {
 if (canvasResolutionSelect) {
     canvasResolutionSelect.addEventListener('change', (e) => {
         const value = e.target.value;
-        
+
         if (value === 'custom') {
             customResolutionContainer.style.display = 'block';
         } else {
@@ -1040,6 +1198,9 @@ if (canvasResolutionSelect) {
             localStorage.setItem('canvasResolution', value);
         }
     });
+
+    // Initialize custom dropdown for resolution selector
+    createCustomSelect(canvasResolutionSelect);
 }
 
 // Apply custom resolution
@@ -1047,12 +1208,12 @@ if (applyCustomResolutionBtn) {
     applyCustomResolutionBtn.addEventListener('click', () => {
         const width = parseInt(customWidthInput.value);
         const height = parseInt(customHeightInput.value);
-        
+
         if (width < 400 || width > 7680 || height < 200 || height > 4320) {
             alert('Please enter valid dimensions:\nWidth: 400-7680\nHeight: 200-4320');
             return;
         }
-        
+
         applyCanvasResolution(width, height);
         localStorage.setItem('canvasResolution', `${width}x${height}`);
     });
@@ -1061,7 +1222,7 @@ if (applyCustomResolutionBtn) {
 function applyCanvasResolution(width, height) {
     canvas.width = width;
     canvas.height = height;
-    
+
     // Reinitialize all visualizers with new canvas size
     if (visualizerManager) {
         visualizerManager.visualizers.forEach(viz => {
@@ -1069,14 +1230,14 @@ function applyCanvasResolution(width, height) {
                 viz.init(canvas, ctx);
             }
         });
-        
+
         // Trigger resize on current visualizer
         const current = visualizerManager.getCurrent();
         if (current && current.resize) {
             current.resize();
         }
     }
-    
+
     console.log(`Canvas resolution changed to ${width}x${height}`);
 }
 
@@ -1636,11 +1797,21 @@ playBtn.addEventListener('click', () => {
     audioSource.buffer = audioBuffer;
     audioSource.playbackRate.value = playbackRate;
 
-    // Connect: source → analyser → gain → destination (speakers)
+    // Connect main visualizer: source → analyser → volumeGain → destination (not affected by dB gain)
     audioSource.connect(analyser);
     analyser.connect(gainNode);
     gainNode.connect(audioContext.destination);
-    console.log('Audio graph connected: source → analyser → gain → destination');
+
+    // Connect volume history: source → dbGain → volumeHistoryAnalyser (affected by dB gain)
+    audioSource.connect(dbGainNode);
+    dbGainNode.connect(volumeHistoryAnalyser);
+    // volumeHistoryAnalyser doesn't need to connect to destination, it's just for analysis
+
+    console.log('Audio graph connected: main visualizer (source → analyser → gain → destination), volume history (source → dbGain → volumeHistoryAnalyser)');
+
+    // Start volume history visualizer with its own analyser
+    volumeHistoryVisualizer.updateAnalyser(volumeHistoryAnalyser);
+    volumeHistoryVisualizer.start();
 
     // Handle when audio ends
     audioSource.onended = () => {
@@ -1832,8 +2003,21 @@ populateVisualizerSelect();
 
 // Main animation loop
 function animate() {
-    // console.log('Animating...'); // Debug log
     requestAnimationFrame(animate);
+
+    // Apply FPS cap if set
+    if (fpsCap !== null) {
+        const now = performance.now();
+        const frameInterval = 1000 / fpsCap; // milliseconds per frame
+        const elapsed = now - fpsCapLastFrameTime;
+
+        if (elapsed < frameInterval) {
+            // Skip this frame to maintain FPS cap
+            return;
+        }
+
+        fpsCapLastFrameTime = now - (elapsed % frameInterval); // Maintain consistent timing
+    }
 
     // Count frame for FPS calculation
     countFrame();
@@ -1954,20 +2138,33 @@ function updateCustomSettings() {
 
 function updateModalCustomSettings() {
     const customSettingsContainer = document.getElementById('customSettings');
+    const customSettingsSection = document.getElementById('customSettingsSection');
+    const visualizerCategoryBtn = document.getElementById('visualizerCategoryBtn');
+
     if (!customSettingsContainer) return;
 
     const visualizer = visualizerManager.currentVisualizer;
-    if (!visualizer) return;
+    if (!visualizer) {
+        if (visualizerCategoryBtn) visualizerCategoryBtn.style.display = 'none';
+        if (customSettingsSection) customSettingsSection.style.display = 'none';
+        return;
+    }
 
     const customSettings = visualizer.getCustomSettings();
 
     if (customSettings.length === 0) {
         customSettingsContainer.innerHTML = '';
         customSettingsContainer.style.display = 'none';
+        if (visualizerCategoryBtn) visualizerCategoryBtn.style.display = 'none';
+        if (customSettingsSection) customSettingsSection.style.display = 'none';
         return;
     }
 
-    customSettingsContainer.style.display = 'grid';
+    // Show visualizer category button
+    if (visualizerCategoryBtn) visualizerCategoryBtn.style.display = 'block';
+    if (customSettingsSection) customSettingsSection.style.display = 'block';
+
+    customSettingsContainer.style.display = 'flex';
     customSettingsContainer.innerHTML = '';
 
     customSettings.forEach(setting => {
@@ -2048,6 +2245,11 @@ function populateVisualizerSelect() {
 
 // Generic function to create custom select
 function createCustomSelect(selectElement) {
+    // Check if custom select already exists
+    if (selectElement.nextElementSibling && selectElement.nextElementSibling.classList.contains('custom-select')) {
+        return; // Already has a custom select, don't create another one
+    }
+    
     // Create custom select wrapper
     const customSelect = document.createElement('div');
     customSelect.className = 'custom-select';
@@ -2139,12 +2341,179 @@ if (settingsToggle) {
     console.error('Settings button not found!');
 }
 
-// Settings handlers
-primaryColorInput.addEventListener('input', (e) => {
-    settings.primaryColor = e.target.value;
-    document.getElementById('colorValue').textContent = e.target.value;
+// Color theme definitions
+const colorThemes = {
+    green: {
+        primary: '#00ff88',
+        primaryHover: '#00dd77',
+        primaryDark: '#00cc6a',
+        primaryLight: '#33ffaa',
+        primaryRgb: '0, 255, 136'
+    },
+    blue: {
+        primary: '#0088ff',
+        primaryHover: '#0066dd',
+        primaryDark: '#0055cc',
+        primaryLight: '#33aaff',
+        primaryRgb: '0, 136, 255'
+    },
+    purple: {
+        primary: '#aa00ff',
+        primaryHover: '#8800dd',
+        primaryDark: '#7700cc',
+        primaryLight: '#cc33ff',
+        primaryRgb: '170, 0, 255'
+    },
+    red: {
+        primary: '#ff4444',
+        primaryHover: '#dd2222',
+        primaryDark: '#cc1111',
+        primaryLight: '#ff6666',
+        primaryRgb: '255, 68, 68'
+    },
+    orange: {
+        primary: '#ff8800',
+        primaryHover: '#dd6600',
+        primaryDark: '#cc5500',
+        primaryLight: '#ffaa33',
+        primaryRgb: '255, 136, 0'
+    },
+    cyan: {
+        primary: '#00ffff',
+        primaryHover: '#00dddd',
+        primaryDark: '#00cccc',
+        primaryLight: '#33ffff',
+        primaryRgb: '0, 255, 255'
+    },
+    pink: {
+        primary: '#ff00aa',
+        primaryHover: '#dd0088',
+        primaryDark: '#cc0077',
+        primaryLight: '#ff33cc',
+        primaryRgb: '255, 0, 170'
+    },
+    yellow: {
+        primary: '#ffff00',
+        primaryHover: '#dddd00',
+        primaryDark: '#cccc00',
+        primaryLight: '#ffff33',
+        primaryRgb: '255, 255, 0'
+    }
+};
+
+// Apply theme to CSS variables
+function applyTheme(themeName) {
+    const theme = colorThemes[themeName];
+    if (!theme) return;
+
+    document.documentElement.style.setProperty('--theme-primary', theme.primary);
+    document.documentElement.style.setProperty('--theme-primary-hover', theme.primaryHover);
+    document.documentElement.style.setProperty('--theme-primary-dark', theme.primaryDark);
+    document.documentElement.style.setProperty('--theme-primary-light', theme.primaryLight);
+    document.documentElement.style.setProperty('--theme-primary-rgb', theme.primaryRgb);
+
+    // Also update settings.primaryColor for visualizers
+    settings.primaryColor = theme.primary;
     saveSettings();
-});
+}
+
+// Color theme selector
+const colorThemeSelect = document.getElementById('colorTheme');
+const customColorContainer = document.getElementById('customColorContainer');
+// primaryColorInput is already declared above (line 413)
+
+if (colorThemeSelect) {
+    // Load saved theme
+    const savedTheme = localStorage.getItem('colorTheme') || 'green';
+    colorThemeSelect.value = savedTheme;
+    applyTheme(savedTheme);
+
+    // Show custom color picker if custom theme is selected
+    if (savedTheme === 'custom') {
+        customColorContainer.style.display = 'block';
+        const savedCustomColor = localStorage.getItem('customPrimaryColor') || '#00ff88';
+        if (primaryColorInput) {
+            primaryColorInput.value = savedCustomColor;
+            applyCustomColor(savedCustomColor);
+        }
+    }
+
+    colorThemeSelect.addEventListener('change', (e) => {
+        const themeName = e.target.value;
+        localStorage.setItem('colorTheme', themeName);
+
+        if (themeName === 'custom') {
+            customColorContainer.style.display = 'block';
+            const savedCustomColor = localStorage.getItem('customPrimaryColor') || settings.primaryColor || '#00ff88';
+            if (primaryColorInput) {
+                primaryColorInput.value = savedCustomColor;
+                applyCustomColor(savedCustomColor);
+            }
+        } else {
+            customColorContainer.style.display = 'none';
+            applyTheme(themeName);
+        }
+        
+        // Update custom select trigger text if it exists (don't create a new one)
+        const customSelect = colorThemeSelect.nextElementSibling;
+        if (customSelect && customSelect.classList.contains('custom-select')) {
+            const trigger = customSelect.querySelector('.custom-select-trigger');
+            if (trigger) {
+                trigger.textContent = colorThemeSelect.options[colorThemeSelect.selectedIndex]?.text || colorThemeSelect.value;
+            }
+        }
+    });
+
+    // Initialize custom select (only if it doesn't exist)
+    createCustomSelect(colorThemeSelect);
+}
+
+// Apply custom color
+function applyCustomColor(color) {
+    // Calculate hover/dark/light variants
+    const rgb = hexToRgb(color);
+    if (!rgb) return;
+
+    const hover = rgbToHex(Math.max(0, rgb.r - 34), Math.max(0, rgb.g - 34), Math.max(0, rgb.b - 34));
+    const dark = rgbToHex(Math.max(0, rgb.r - 51), Math.max(0, rgb.g - 51), Math.max(0, rgb.b - 51));
+    const light = rgbToHex(Math.min(255, rgb.r + 51), Math.min(255, rgb.g + 51), Math.min(255, rgb.b + 51));
+
+    document.documentElement.style.setProperty('--theme-primary', color);
+    document.documentElement.style.setProperty('--theme-primary-hover', hover);
+    document.documentElement.style.setProperty('--theme-primary-dark', dark);
+    document.documentElement.style.setProperty('--theme-primary-light', light);
+    document.documentElement.style.setProperty('--theme-primary-rgb', `${rgb.r}, ${rgb.g}, ${rgb.b}`);
+
+    settings.primaryColor = color;
+    saveSettings();
+    localStorage.setItem('customPrimaryColor', color);
+}
+
+// Helper functions for color conversion
+function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+    } : null;
+}
+
+function rgbToHex(r, g, b) {
+    return "#" + [r, g, b].map(x => {
+        const hex = Math.round(x).toString(16);
+        return hex.length === 1 ? "0" + hex : hex;
+    }).join("");
+}
+
+// Settings handlers
+if (primaryColorInput) {
+    primaryColorInput.addEventListener('input', (e) => {
+        const color = e.target.value;
+        document.getElementById('colorValue').textContent = color;
+        applyCustomColor(color);
+    });
+}
 
 lineWidthInput.addEventListener('input', (e) => {
     settings.lineWidth = parseInt(e.target.value);
@@ -2185,6 +2554,44 @@ if (gpuAccelerationInput) {
         applyGPUAcceleration(e.target.checked);
         saveSettings();
     });
+}
+
+// FPS Cap setting
+const fpsCapSelect = document.getElementById('fpsCap');
+if (fpsCapSelect) {
+    // Load saved FPS cap
+    const savedFpsCap = localStorage.getItem('fpsCap') || 'unlimited';
+    fpsCapSelect.value = savedFpsCap;
+    updateFpsCap(savedFpsCap);
+
+    fpsCapSelect.addEventListener('change', (e) => {
+        const value = e.target.value;
+        updateFpsCap(value);
+        localStorage.setItem('fpsCap', value);
+
+        // Update custom select trigger text
+        const customSelect = fpsCapSelect.nextElementSibling;
+        if (customSelect && customSelect.classList.contains('custom-select')) {
+            const trigger = customSelect.querySelector('.custom-select-trigger');
+            if (trigger) {
+                trigger.textContent = fpsCapSelect.options[fpsCapSelect.selectedIndex]?.text || fpsCapSelect.value;
+            }
+        }
+    });
+
+    // Initialize custom select
+    createCustomSelect(fpsCapSelect);
+}
+
+function updateFpsCap(value) {
+    if (value === 'unlimited') {
+        fpsCap = null;
+        fpsCapLastFrameTime = 0; // Reset timing
+    } else {
+        fpsCap = parseInt(value);
+        fpsCapLastFrameTime = performance.now(); // Reset timing when changing cap
+    }
+    console.log('FPS Cap set to:', fpsCap === null ? 'Unlimited' : `${fpsCap} FPS`);
 }
 
 // Open DevTools on Startup setting
@@ -2279,9 +2686,12 @@ function loadSettings() {
         Object.assign(settings, loaded);
     }
 
-    // Update UI
-    primaryColorInput.value = settings.primaryColor;
-    document.getElementById('colorValue').textContent = settings.primaryColor;
+    // Update UI - only if custom color is selected
+    const savedTheme = localStorage.getItem('colorTheme') || 'green';
+    if (savedTheme === 'custom' && primaryColorInput) {
+        primaryColorInput.value = settings.primaryColor;
+        document.getElementById('colorValue').textContent = settings.primaryColor;
+    }
 
     lineWidthInput.value = settings.lineWidth;
     document.getElementById('lineWidthValue').textContent = settings.lineWidth;
@@ -2443,7 +2853,9 @@ console.log('Keyboard: Space=Play/Pause, ←→=Prev/Next, ↑↓=Volume, R=Repe
 // Initial canvas state
 ctx.fillStyle = '#000';
 ctx.fillRect(0, 0, canvas.width, canvas.height);
-ctx.fillStyle = '#00ff88';
+// Use CSS variable for theme color (not settings.primaryColor which is for visualizers)
+const themeColor = getComputedStyle(document.documentElement).getPropertyValue('--theme-primary').trim() || '#00ff88';
+ctx.fillStyle = themeColor;
 ctx.font = '20px Arial';
 ctx.textAlign = 'center';
 ctx.fillText('Browse a folder and select an audio file to begin', canvas.width / 2, canvas.height / 2);
@@ -2561,7 +2973,7 @@ loadPlaylistsBtn.addEventListener('click', () => {
 function performSpotifySearch() {
     const query = spotifySearchInput.value.trim();
     if (!query) return;
-    
+
     console.log('Searching Spotify for:', query);
     ipcRenderer.send('spotify-search', query);
     statusText.textContent = `Searching for "${query}"...`;
@@ -3017,8 +3429,14 @@ function connectSpotifyPlayerToWebAudio() {
                         }
 
                         spotifyAudioSource = audioContext.createMediaElementSource(spotifyMediaElement);
+                        // Connect main visualizer: source → analyser → volumeGain → destination (not affected by dB gain)
                         spotifyAudioSource.connect(analyser);
-                        analyser.connect(audioContext.destination);
+                        analyser.connect(gainNode);
+                        gainNode.connect(audioContext.destination);
+
+                        // Connect volume history: source → dbGain → volumeHistoryAnalyser (affected by dB gain)
+                        spotifyAudioSource.connect(dbGainNode);
+                        dbGainNode.connect(volumeHistoryAnalyser);
 
                         console.log('✅ Successfully connected Spotify player to Web Audio API!');
                         statusText.textContent = 'Spotify connected - visualizations enabled!';
@@ -3184,8 +3602,8 @@ function downloadSpotifyTrack(track) {
         title: track.name,
         artist: track.artists.map(a => a.name).join(', '),
         album: track.album ? track.album.name : '',
-        albumArt: track.album && track.album.images && track.album.images.length > 0 
-            ? track.album.images[0].url 
+        albumArt: track.album && track.album.images && track.album.images.length > 0
+            ? track.album.images[0].url
             : null
     });
 }
