@@ -302,7 +302,20 @@ const repeatTitle = computed(() => {
 
 // Methods
 const play = () => {
-  // Try new Spectra API first
+  // Check for external audio (YouTube) FIRST - this takes priority
+  if (window.audioManager && window.audioManager.externalAudio) {
+    const audioEl = window.audioManager.externalAudio;
+    if (audioEl && audioEl.paused) {
+      audioEl.play().then(() => {
+        audioStore.setPlaying(true);
+      }).catch(err => {
+        console.warn('[AudioPlayer] Failed to play external audio:', err);
+      });
+      return;
+    }
+  }
+  
+  // Try new Spectra API for local files
   if (window.spectra && window.spectra.isInitialized) {
     const played = window.spectra.play();
     if (played) {
@@ -328,7 +341,17 @@ const play = () => {
 };
 
 const pause = () => {
-  // Try new Spectra API first
+  // Check for external audio (YouTube) FIRST - this takes priority
+  if (window.audioManager && window.audioManager.externalAudio) {
+    const audioEl = window.audioManager.externalAudio;
+    if (audioEl && !audioEl.paused) {
+      audioEl.pause();
+      audioStore.setPlaying(false);
+      return;
+    }
+  }
+  
+  // Try new Spectra API for local files
   if (window.spectra && window.spectra.isInitialized) {
     const paused = window.spectra.pause();
     if (paused) {
@@ -435,6 +458,16 @@ const seekTo = (event) => {
     window.audioManager.seekTo(seekTime);
     audioStore.setTime(seekTime, duration.value);
     return;
+  }
+  
+  // Handle external audio (YouTube) - seek directly on audio element
+  if (window.audioManager && window.audioManager.externalAudio) {
+    const audioEl = window.audioManager.externalAudio;
+    if (audioEl && audioEl.duration > 0) {
+      audioEl.currentTime = seekTime;
+      audioStore.setTime(seekTime, audioEl.duration);
+      return;
+    }
   }
   
   // Fallback to audioFileLoader
@@ -678,14 +711,33 @@ onMounted(async () => {
   
   // Set up time update interval
   const updateTime = () => {
+    // Check for external audio first (YouTube, etc.)
+    if (window.audioManager && window.audioManager.externalAudio) {
+      const audioEl = window.audioManager.externalAudio;
+      if (audioEl && audioEl.readyState >= 2) { // HAVE_CURRENT_DATA or higher
+        const current = audioEl.currentTime || 0;
+        const duration = audioEl.duration || 0;
+        // Only update if we have valid duration (prevents resetting to 0:00)
+        if (duration > 0 && !isNaN(duration) && !isNaN(current)) {
+          audioStore.setTime(current, duration);
+        }
+      }
+      return; // Don't check other sources if external audio is playing
+    }
+    
+    // Check for Spectra audio player
     if (window.spectra && window.spectra.audioPlayer) {
       const current = window.spectra.audioPlayer.getCurrentTime();
       const duration = window.spectra.audioPlayer.getDuration();
-      audioStore.setTime(current, duration);
+      if (duration > 0 && !isNaN(duration) && !isNaN(current)) {
+        audioStore.setTime(current, duration);
+      }
     } else if (window.audioFileLoader) {
       const current = window.audioFileLoader.getCurrentTime();
       const duration = window.audioFileLoader.getDuration();
-      audioStore.setTime(current, duration);
+      if (duration > 0 && !isNaN(duration) && !isNaN(current)) {
+        audioStore.setTime(current, duration);
+      }
     }
   };
   

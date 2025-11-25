@@ -82,7 +82,9 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
-      enableRemoteModule: true
+      enableRemoteModule: true,
+      webSecurity: false, // Disable web security to allow YouTube audio playback (CORS)
+      allowRunningInsecureContent: true
     }
   });
 
@@ -109,6 +111,28 @@ function createWindow() {
     console.log('Loading file directly...');
     mainWindow.loadFile('index.html');
   }
+
+  // Handle CORS for YouTube audio streams
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+    callback({
+      requestHeaders: {
+        ...details.requestHeaders,
+        'Origin': '*',
+        'Access-Control-Allow-Origin': '*'
+      }
+    });
+  });
+
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Access-Control-Allow-Origin': ['*'],
+        'Access-Control-Allow-Methods': ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        'Access-Control-Allow-Headers': ['Content-Type', 'Authorization']
+      }
+    });
+  });
 
   // Update maximize button when window state changes
   mainWindow.on('maximize', () => {
@@ -678,7 +702,8 @@ function setupIPCHandlers() {
         url: bestAudio.url,
         title: result.title,
         duration: result.duration,
-        thumbnail: result.thumbnail
+        thumbnail: result.thumbnail,
+        channel: result.uploader || result.channel || result.channel_id || 'YouTube'
       };
 
     } catch (error) {

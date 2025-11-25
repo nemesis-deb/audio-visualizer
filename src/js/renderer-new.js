@@ -219,6 +219,205 @@ async function initialize() {
         if (spectra.audioPlayer && spectra.audioPlayer.setGainDB) {
           spectra.audioPlayer.setGainDB(gainDB);
         }
+      },
+      // External audio source support (for YouTube, etc.)
+      externalAudio: null,
+      externalAudioSource: null,
+      seekTo(time) {
+        // Seek support for external audio
+        if (this.externalAudio && this.externalAudio.duration > 0) {
+          this.externalAudio.currentTime = Math.max(0, Math.min(time, this.externalAudio.duration));
+          // Update store immediately
+          if (window.audioStore) {
+            window.audioStore.setTime(this.externalAudio.currentTime, this.externalAudio.duration);
+          }
+          return true;
+        }
+        return false;
+      },
+      clear() {
+        // Clear external audio and disconnect source
+        if (this.externalAudioSource) {
+          try {
+            this.externalAudioSource.disconnect();
+          } catch (e) {
+            // ignore
+          }
+          this.externalAudioSource = null;
+        }
+        if (this.externalAudio) {
+          try {
+            this.externalAudio.pause();
+            this.externalAudio.currentTime = 0;
+          } catch (e) {
+            // ignore
+          }
+          this.externalAudio = null;
+        }
+      },
+      setAudioSource(mediaElement, providedCtx = null) {
+        try {
+          // Use provided context or existing audioContext
+          const ctx = providedCtx || spectra.audioContext || new (window.AudioContext || window.webkitAudioContext)();
+          
+          // Ensure analyser exists
+          if (!spectra.analyser) {
+            console.warn('[audioManager] Analyser not available');
+            return false;
+          }
+          
+          // Clean previous source
+          if (this.externalAudioSource) {
+            try { 
+              this.externalAudioSource.disconnect(); 
+            } catch (e) { 
+              // ignore 
+            }
+          }
+          
+          this.externalAudio = mediaElement;
+          
+          // Create media source from audio element
+          const source = ctx.createMediaElementSource(mediaElement);
+          this.externalAudioSource = source;
+          
+          // Connect: source -> analyser -> gainNode -> destination
+          source.connect(spectra.analyser);
+          if (spectra.gainNode) {
+            spectra.analyser.connect(spectra.gainNode);
+            spectra.gainNode.connect(ctx.destination);
+          } else {
+            spectra.analyser.connect(ctx.destination);
+          }
+          
+          // Set up event listeners
+          const onPlay = () => {
+            if (window.audioStore) {
+              window.audioStore.setPlaying(true);
+            }
+            // Update Discord RPC if this is YouTube audio
+            if (mediaElement && window.discordRPC && window.discordRPC.updateYouTubePresence) {
+              // Check if this is a YouTube video by checking the source or metadata
+              const videoId = mediaElement.dataset?.videoId || window.currentYouTubeVideoId;
+              if (videoId) {
+                // Get metadata from audio store or window
+                const title = window.audioStore?.title || 'Unknown';
+                const artist = window.audioStore?.artist || 'YouTube';
+                const thumbnail = window.audioStore?.albumArt;
+                
+                window.discordRPC.updateYouTubePresence({
+                  title: title,
+                  artist: artist,
+                  thumbnail: thumbnail,
+                  isPlaying: true,
+                  currentTime: mediaElement.currentTime || 0,
+                  duration: mediaElement.duration || 0,
+                  videoId: videoId
+                });
+              }
+            }
+          };
+          const onPause = () => {
+            if (window.audioStore) {
+              window.audioStore.setPlaying(false);
+            }
+            // Update Discord RPC if this is YouTube audio
+            if (mediaElement && window.discordRPC && window.discordRPC.updateYouTubePresence) {
+              const videoId = mediaElement.dataset?.videoId || window.currentYouTubeVideoId;
+              if (videoId) {
+                const title = window.audioStore?.title || 'Unknown';
+                const artist = window.audioStore?.artist || 'YouTube';
+                const thumbnail = window.audioStore?.albumArt;
+                
+                window.discordRPC.updateYouTubePresence({
+                  title: title,
+                  artist: artist,
+                  thumbnail: thumbnail,
+                  isPlaying: false,
+                  currentTime: mediaElement.currentTime || 0,
+                  duration: mediaElement.duration || 0,
+                  videoId: videoId
+                });
+              }
+            }
+          };
+          const onTimeUpdate = () => {
+            if (mediaElement) {
+              const currentTime = mediaElement.currentTime || 0;
+              const duration = mediaElement.duration || 0;
+              
+              // Only update if we have valid duration (prevents resetting to 0:00)
+              // Check readyState to ensure metadata is loaded
+              if (duration > 0 && !isNaN(duration) && !isNaN(currentTime) && mediaElement.readyState >= 2) {
+                // Update audio store if available
+                if (window.audioStore) {
+                  window.audioStore.setTime(currentTime, duration);
+                }
+                
+                // Update Discord RPC periodically (every ~5 seconds) for YouTube
+                if (window.discordRPC && window.discordRPC.updateYouTubePresence) {
+                  const videoId = mediaElement.dataset?.videoId || window.currentYouTubeVideoId;
+                  if (videoId && (!mediaElement._lastDiscordUpdate || Date.now() - mediaElement._lastDiscordUpdate > 5000)) {
+                    const title = window.audioStore?.title || 'Unknown';
+                    const artist = window.audioStore?.artist || 'YouTube';
+                    const thumbnail = window.audioStore?.albumArt;
+                    
+                    window.discordRPC.updateYouTubePresence({
+                      title: title,
+                      artist: artist,
+                      thumbnail: thumbnail,
+                      isPlaying: !mediaElement.paused,
+                      currentTime: currentTime,
+                      duration: duration,
+                      videoId: videoId
+                    });
+                    mediaElement._lastDiscordUpdate = Date.now();
+                  }
+                }
+              }
+            }
+          };
+          const onEnded = () => {
+            if (window.audioStore) {
+              window.audioStore.setPlaying(false);
+            }
+          };
+          
+          // Remove previous listeners if any
+          try {
+            mediaElement.removeEventListener('play', mediaElement.__onPlay);
+            mediaElement.removeEventListener('pause', mediaElement.__onPause);
+            mediaElement.removeEventListener('timeupdate', mediaElement.__onTimeUpdate);
+            mediaElement.removeEventListener('ended', mediaElement.__onEnded);
+          } catch (e) { }
+          
+          mediaElement.__onPlay = onPlay;
+          mediaElement.__onPause = onPause;
+          mediaElement.__onTimeUpdate = onTimeUpdate;
+          mediaElement.__onEnded = onEnded;
+          
+          mediaElement.addEventListener('play', onPlay);
+          mediaElement.addEventListener('pause', onPause);
+          mediaElement.addEventListener('timeupdate', onTimeUpdate);
+          mediaElement.addEventListener('ended', onEnded);
+          
+          console.log('[audioManager] External audio source connected successfully');
+          return true;
+        } catch (err) {
+          console.error('[audioManager] setAudioSource error:', err);
+          return false;
+        }
+      },
+      clear() {
+        if (this.externalAudioSource) {
+          try {
+            this.externalAudioSource.disconnect();
+          } catch (e) {
+            // ignore
+          }
+          this.externalAudioSource = null;
+        }
+        this.externalAudio = null;
       }
     };
     

@@ -8,8 +8,19 @@
     
     <!-- Main App Container -->
     <div class="app-container">
-      <!-- File Browser (left sidebar) -->
-      <FileBrowser />
+      <!-- Sidebar with Tabs -->
+      <div class="sidebar-container">
+        <SidebarTabs />
+        
+        <!-- File Browser (left sidebar) -->
+        <FileBrowser />
+        
+        <!-- Spotify Panel -->
+        <SpotifyPanel />
+        
+        <!-- YouTube Panel -->
+        <YouTubePanel />
+      </div>
       
       <div class="content-wrapper">
         <!-- Audio Player -->
@@ -31,12 +42,6 @@
     
     <!-- Queue Panel -->
     <QueuePanel />
-    
-    <!-- Spotify Panel (will be integrated into sidebar in Phase 5) -->
-    <SpotifyPanel />
-    
-    <!-- YouTube Panel (will be integrated into sidebar in Phase 5) -->
-    <YouTubePanel />
   </div>
 </template>
 
@@ -50,6 +55,7 @@ import QueuePanel from './components/QueuePanel.vue';
 import SpotifyPanel from './components/SpotifyPanel.vue';
 import YouTubePanel from './components/YouTubePanel.vue';
 import FileBrowser from './components/FileBrowser.vue';
+import SidebarTabs from './components/SidebarTabs.vue';
 import { useSettingsStore } from './stores/settings.js';
 import { useAudioIntegration } from './composables/useAudioIntegration.js';
 import { onMounted } from 'vue';

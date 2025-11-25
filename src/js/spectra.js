@@ -217,6 +217,27 @@ export class Spectra {
     this.audioPlayer.on('player:play', async (data) => {
       console.log('[Spectra] Playback started:', data.file.name);
       
+      // Stop any external audio (YouTube) that's currently playing
+      if (window.audioManager && window.audioManager.externalAudio) {
+        const externalAudio = window.audioManager.externalAudio;
+        if (externalAudio && !externalAudio.paused) {
+          console.log('[Spectra] Stopping external audio (YouTube) before playing local file');
+          externalAudio.pause();
+          externalAudio.currentTime = 0;
+        }
+        // Clear external audio reference
+        if (window.audioManager.clear) {
+          window.audioManager.clear();
+        }
+        window.audioManager.externalAudio = null;
+        window.audioManager.externalAudioSource = null;
+      }
+      
+      // Clear YouTube video ID
+      if (window.currentYouTubeVideoId) {
+        window.currentYouTubeVideoId = null;
+      }
+      
       // Update Discord RPC when playing
       if (window.discordRPC && window.discordRPC.updatePresence) {
         try {

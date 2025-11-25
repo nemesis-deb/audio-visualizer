@@ -1,10 +1,5 @@
 <template>
   <div v-if="isOpen" class="sidebar" id="fileBrowserSidebar">
-    <div class="sidebar-header">
-      <h2>Files</h2>
-      <button @click="close" class="icon-btn">×</button>
-    </div>
-    
     <div class="sidebar-content">
 
       <!-- Folder Path Display -->
@@ -159,6 +154,16 @@
       
       <!-- Bottom Controls -->
       <div style="margin-top: auto; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+        <!-- Browse Folder Button -->
+        <div class="browse-folder-container">
+          <button @click="browseFolder" class="browse-folder-btn" id="browseFolderBtn">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z"/>
+            </svg>
+            Browse Folder
+          </button>
+        </div>
+
         <!-- Include Subfolders Checkbox -->
         <div class="include-subfolders-container">
           <label class="checkbox-label">
@@ -170,16 +175,6 @@
             />
             <span>Include subfolders</span>
           </label>
-        </div>
-        
-        <!-- Browse Folder Button -->
-        <div class="browse-folder-container">
-          <button @click="browseFolder" class="browse-folder-btn" id="browseFolderBtn">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z"/>
-            </svg>
-            Browse Folder
-          </button>
         </div>
       </div>
     </div>
@@ -198,7 +193,9 @@ const audioStore = useAudioStore();
 const settingsStore = useSettingsStore();
 const { send, on, invoke } = useElectronIPC();
 
-const isOpen = computed(() => uiStore.fileBrowserOpen);
+const isOpen = computed(() => {
+  return uiStore.activeSidebarTab === 'files';
+});
 const isPlaying = computed(() => audioStore.isPlaying);
 const currentFileIndex = computed(() => audioStore.currentIndex);
 
@@ -264,9 +261,7 @@ const emptyStateMessage = computed(() => {
 });
 
 // Methods
-const close = () => {
-  uiStore.setFileBrowserOpen(false);
-};
+// No close button needed - tabs handle switching
 
 const browseFolder = () => {
   send('open-folder-dialog');
@@ -311,6 +306,48 @@ const loadFolder = (folderPath) => {
     }
     
     loading.value = false;
+    
+    // Pre-populate album arts from cache before loading metadata
+    if (window.albumArtManager && result.files.length > 0) {
+      const cachedArts = new Map();
+      result.files.forEach(file => {
+        // Check in-memory cache first
+        if (window.albumArtManager.cache && window.albumArtManager.cache.has(file.path)) {
+          const cached = window.albumArtManager.cache.get(file.path);
+          if (cached) {
+            cachedArts.set(file.path, cached);
+          }
+        } else {
+          // Check persistent cache (localStorage)
+          try {
+            const cacheKey = window.albumArtManager.cacheKey || 'spectra_album_art_cache';
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+              const cacheData = JSON.parse(cached);
+              if (cacheData[file.path]) {
+                cachedArts.set(file.path, cacheData[file.path]);
+                // Also restore to in-memory cache
+                if (window.albumArtManager.cache) {
+                  window.albumArtManager.cache.set(file.path, cacheData[file.path]);
+                }
+              }
+            }
+          } catch (error) {
+            // Ignore errors when checking cache
+          }
+        }
+      });
+      
+      // Apply cached arts immediately
+      if (cachedArts.size > 0) {
+        const newMap = new Map(fileAlbumArts.value);
+        cachedArts.forEach((artUrl, filePath) => {
+          newMap.set(filePath, artUrl);
+        });
+        fileAlbumArts.value = newMap;
+        console.log('[FileBrowser] Pre-loaded', cachedArts.size, 'album arts from cache');
+      }
+    }
     
     // Load metadata and album art for all files (Amethyst-style)
     if (result.files.length > 0) {
@@ -427,30 +464,25 @@ const loadFileMetadata = async (files, force = false) => {
         
         // Load album art concurrently (Amethyst approach)
         if (window.albumArtManager && (!fileAlbumArts.value.has(file.path) || force)) {
-          // Check if AlbumArtManager has already tried this file
-          const alreadyTried = window.albumArtManager.cache && window.albumArtManager.cache.has(file.path);
-          
-          if (!alreadyTried || force) {
-            try {
-              const artUrl = await window.albumArtManager.extractAlbumArt(file.path);
-              if (artUrl) {
-                albumArtUpdates.set(file.path, artUrl);
-                console.log('[FileBrowser] Album art loaded for:', file.name);
-              } else {
-                // Explicitly set null to mark as tried (prevents retries)
-                if (!window.albumArtManager.cache) {
-                  window.albumArtManager.cache = new Map();
-                }
-                window.albumArtManager.cache.set(file.path, null);
-              }
-            } catch (error) {
-              console.warn('[FileBrowser] Failed to extract album art for:', file.name, error.message);
-              // Mark as tried to prevent infinite retries
-              if (!window.albumArtManager.cache) {
-                window.albumArtManager.cache = new Map();
-              }
-              window.albumArtManager.cache.set(file.path, null);
+          try {
+            // extractAlbumArt will check cache first (both memory and persistent)
+            // and return cached value if available, or extract if not
+            const artUrl = await window.albumArtManager.extractAlbumArt(file.path);
+            if (artUrl) {
+              albumArtUpdates.set(file.path, artUrl);
+              console.log('[FileBrowser] Album art loaded for:', file.name);
             }
+            // Note: null values are already cached in AlbumArtManager, so we don't need to cache them here
+          } catch (error) {
+            console.warn('[FileBrowser] Failed to extract album art for:', file.name, error.message);
+          }
+        } else if (window.albumArtManager && fileAlbumArts.value.has(file.path)) {
+          // Already have it in FileBrowser's local cache, but check if it's also in AlbumArtManager cache
+          // This ensures consistency
+          const existingArt = fileAlbumArts.value.get(file.path);
+          if (existingArt && window.albumArtManager.cache && !window.albumArtManager.cache.has(file.path)) {
+            // Restore to AlbumArtManager cache if not already there
+            window.albumArtManager.cache.set(file.path, existingArt);
           }
         }
         
@@ -766,7 +798,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  scrollbar-color: rgba(200, 200, 200, 0.4) transparent;
 }
 
 .sidebar-content::-webkit-scrollbar {
@@ -774,16 +806,18 @@ onUnmounted(() => {
 }
 
 .sidebar-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .sidebar-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
+  background: rgba(200, 200, 200, 0.4);
+  border-radius: 10px;
+  border: none;
+  margin: 2px;
 }
 
 .sidebar-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(200, 200, 200, 0.6);
 }
 
 .browse-folder-container {
@@ -858,7 +892,7 @@ onUnmounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  scrollbar-color: rgba(200, 200, 200, 0.4) transparent;
 }
 
 .file-browser::-webkit-scrollbar {
@@ -870,12 +904,14 @@ onUnmounted(() => {
 }
 
 .file-browser::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
+  background: rgba(200, 200, 200, 0.4);
+  border-radius: 10px;
+  border: none;
+  margin: 2px;
 }
 
 .file-browser::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: rgba(200, 200, 200, 0.6);
 }
 
 .empty-state {

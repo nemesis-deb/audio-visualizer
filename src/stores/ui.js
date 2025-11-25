@@ -5,9 +5,9 @@ export const useUIStore = defineStore('ui', {
     // Panel visibility
     settingsPanelOpen: false,
     queuePanelOpen: false,
-    fileBrowserOpen: true, // Default open
-    spotifyPanelOpen: false,
-    youtubePanelOpen: false,
+    
+    // Sidebar tab system (3 tabs: files, spotify, youtube)
+    activeSidebarTab: 'files', // 'files', 'spotify', or 'youtube'
     
     // Modal visibility
     aboutModalOpen: false,
@@ -20,6 +20,12 @@ export const useUIStore = defineStore('ui', {
     activeMenu: null
   }),
 
+  getters: {
+    fileBrowserOpen: (state) => state.activeSidebarTab === 'files',
+    spotifyPanelOpen: (state) => state.activeSidebarTab === 'spotify',
+    youtubePanelOpen: (state) => state.activeSidebarTab === 'youtube',
+  },
+
   actions: {
     toggleSettingsPanel() {
       this.settingsPanelOpen = !this.settingsPanelOpen;
@@ -29,20 +35,43 @@ export const useUIStore = defineStore('ui', {
       this.queuePanelOpen = !this.queuePanelOpen;
     },
     
+    setActiveSidebarTab(tab) {
+      if (['files', 'spotify', 'youtube'].includes(tab)) {
+        this.activeSidebarTab = tab;
+      }
+    },
+    
+    // Legacy methods for compatibility
     toggleFileBrowser() {
-      this.fileBrowserOpen = !this.fileBrowserOpen;
+      if (this.activeSidebarTab === 'files') {
+        this.activeSidebarTab = 'spotify'; // Switch to another tab if closing
+      } else {
+        this.activeSidebarTab = 'files';
+      }
     },
     
     setFileBrowserOpen(open) {
-      this.fileBrowserOpen = open;
+      if (open) {
+        this.activeSidebarTab = 'files';
+      } else if (this.activeSidebarTab === 'files') {
+        this.activeSidebarTab = 'spotify'; // Switch to another tab
+      }
     },
     
     toggleSpotifyPanel() {
-      this.spotifyPanelOpen = !this.spotifyPanelOpen;
+      if (this.activeSidebarTab === 'spotify') {
+        this.activeSidebarTab = 'files';
+      } else {
+        this.activeSidebarTab = 'spotify';
+      }
     },
     
     toggleYouTubePanel() {
-      this.youtubePanelOpen = !this.youtubePanelOpen;
+      if (this.activeSidebarTab === 'youtube') {
+        this.activeSidebarTab = 'files';
+      } else {
+        this.activeSidebarTab = 'youtube';
+      }
     },
     
     setStatusMessage(message) {

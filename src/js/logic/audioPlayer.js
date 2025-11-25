@@ -157,6 +157,27 @@ export class AudioPlayer extends EventEmitter {
       return false;
     }
 
+    // Stop any external audio (YouTube) that's currently playing
+    if (window.audioManager && window.audioManager.externalAudio) {
+      const externalAudio = window.audioManager.externalAudio;
+      if (externalAudio && !externalAudio.paused) {
+        console.log('[AudioPlayer] Stopping external audio (YouTube) before playing local file');
+        externalAudio.pause();
+        externalAudio.currentTime = 0;
+      }
+      // Clear external audio reference
+      if (window.audioManager.clear) {
+        window.audioManager.clear();
+      }
+      window.audioManager.externalAudio = null;
+      window.audioManager.externalAudioSource = null;
+    }
+    
+    // Clear YouTube video ID
+    if (window.currentYouTubeVideoId) {
+      window.currentYouTubeVideoId = null;
+    }
+
     try {
       this.audioSource = this.audioContext.createBufferSource();
       this.audioSource.buffer = this.audioBuffer;

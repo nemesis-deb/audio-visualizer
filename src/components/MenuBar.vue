@@ -77,7 +77,6 @@ const menus = [
     name: 'view',
     label: 'View',
     items: [
-      { label: 'Toggle File Browser', action: 'toggle-file-browser', accelerator: 'Ctrl+B' },
       { type: 'separator' },
       { label: 'Reload', action: 'reload', accelerator: 'Ctrl+R' },
       { label: 'Force Reload', action: 'forceReload', accelerator: 'Ctrl+Shift+R' },
@@ -129,9 +128,7 @@ const handleMenuAction = (action) => {
     uiStore.toggleSettingsPanel();
   } else if (action === 'open-folder') {
     send('open-folder-dialog');
-  } else if (action === 'toggle-file-browser') {
-    uiStore.toggleFileBrowser();
-  } else if (action === 'toggleFullscreen') {
+        } else if (action === 'toggleFullscreen') {
     uiStore.setFullscreen(!uiStore.fullscreen);
   }
   

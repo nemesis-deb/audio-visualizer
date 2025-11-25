@@ -9,6 +9,9 @@ import { useVisualizerStore } from '../stores/visualizer.js';
 export function useAudioIntegration() {
   const audioStore = useAudioStore();
   const visualizerStore = useVisualizerStore();
+  
+  // Make audioStore available globally for YouTube integration and other scripts
+  window.audioStore = audioStore;
 
   const initializeIntegration = () => {
     // Make sure visualizerManager is available globally
@@ -118,20 +121,36 @@ export function useAudioIntegration() {
     const originalPause = window.audioManager.pause;
     const originalLoadFile = window.audioManager.loadAudioFile;
 
-    // Wrap play to update store
+    // Wrap play to update store - prioritize external audio
     if (originalPlay) {
       window.audioManager.play = function(...args) {
+        // Check for external audio first (YouTube)
+        if (this.externalAudio && this.externalAudio.paused) {
+          this.externalAudio.play().then(() => {
+            audioStore.setPlaying(true);
+          }).catch(err => {
+            console.warn('Failed to play external audio:', err);
+          });
+          return true;
+        }
+        // Otherwise use original play method
         const result = originalPlay.apply(this, args);
         audioStore.setPlaying(true);
         return result;
       };
     } else {
       window.audioManager.play = function() {
-        if (this.externalAudio) {
-          this.externalAudio.play().catch(err => {
+        // Check for external audio first (YouTube)
+        if (this.externalAudio && this.externalAudio.paused) {
+          this.externalAudio.play().then(() => {
+            audioStore.setPlaying(true);
+          }).catch(err => {
             console.warn('Failed to play external audio:', err);
           });
-        } else if (window.audioSource && window.audioBuffer) {
+          return;
+        }
+        // Fallback to local audio
+        if (window.audioSource && window.audioBuffer) {
           // Resume audio context if suspended
           if (window.audioContext && window.audioContext.state === 'suspended') {
             window.audioContext.resume();
@@ -140,24 +159,40 @@ export function useAudioIntegration() {
           if (window.playBtn) {
             window.playBtn.click();
           }
+        } else if (window.spectra && window.spectra.play) {
+          window.spectra.play();
         }
         audioStore.setPlaying(true);
       };
     }
 
-    // Wrap pause to update store
+    // Wrap pause to update store - prioritize external audio
     if (originalPause) {
       window.audioManager.pause = function(...args) {
+        // Check for external audio first (YouTube)
+        if (this.externalAudio && !this.externalAudio.paused) {
+          this.externalAudio.pause();
+          audioStore.setPlaying(false);
+          return true;
+        }
+        // Otherwise use original pause method
         const result = originalPause.apply(this, args);
         audioStore.setPlaying(false);
         return result;
       };
     } else {
       window.audioManager.pause = function() {
-        if (this.externalAudio) {
+        // Check for external audio first (YouTube)
+        if (this.externalAudio && !this.externalAudio.paused) {
           this.externalAudio.pause();
-        } else if (window.audioSource) {
+          audioStore.setPlaying(false);
+          return;
+        }
+        // Fallback to local audio
+        if (window.audioSource) {
           window.audioSource.stop();
+        } else if (window.spectra && window.spectra.pause) {
+          window.spectra.pause();
         }
         audioStore.setPlaying(false);
       };

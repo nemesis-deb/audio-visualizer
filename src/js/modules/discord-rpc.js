@@ -127,6 +127,61 @@ export class DiscordRPC {
         });
     }
 
+    // Update Discord RPC for YouTube video
+    async updateYouTubePresence(data) {
+        if (!this.enabled) return;
+
+        const {
+            title = 'Unknown Title',
+            artist = 'YouTube',
+            thumbnail = null,
+            isPlaying = false,
+            currentTime = 0,
+            duration = 0,
+            videoId = null
+        } = data;
+
+        // Calculate timestamps if we have duration
+        let timestamps = null;
+        if (duration > 0) {
+            const now = Date.now();
+            const elapsed = currentTime * 1000;
+            const remaining = (duration - currentTime) * 1000;
+            
+            if (isPlaying) {
+                timestamps = {
+                    start: Math.floor((now - elapsed) / 1000),
+                    end: Math.floor((now + remaining) / 1000)
+                };
+            } else {
+                // Paused: show same timestamp
+                const pausedAt = Math.floor((now - elapsed) / 1000);
+                timestamps = {
+                    start: pausedAt,
+                    end: pausedAt
+                };
+            }
+        }
+
+        // Build YouTube URL
+        const youtubeUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
+
+        // Send presence update
+        ipcRenderer.send('update-discord-presence', {
+            details: title,
+            state: artist,
+            timestamps: timestamps,
+            pauseStatus: isPlaying ? 'no' : 'yes',
+            containerFormat: 'YouTube',
+            largeImageUrl: thumbnail, // Use video thumbnail
+            largeImageKey: thumbnail ? undefined : 'youtube', // Fallback to 'youtube' key
+            largeImageText: isPlaying ? 'YouTube' : 'Paused - YouTube',
+            smallImageKey: 'icon',
+            smallImageText: 'Spectra 1.1.0',
+            youtubeUrl: youtubeUrl
+        });
+    }
+
     // Clear presence
     clearPresence() {
         this.currentCoverUrl = null;
