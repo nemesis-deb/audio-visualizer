@@ -58,10 +58,12 @@ import FileBrowser from './components/FileBrowser.vue';
 import SidebarTabs from './components/SidebarTabs.vue';
 import { useSettingsStore } from './stores/settings.js';
 import { useAudioIntegration } from './composables/useAudioIntegration.js';
+import { useAlbumArtBackground } from './composables/useAlbumArtBackground.js';
 import { onMounted } from 'vue';
 
 const settingsStore = useSettingsStore();
 const { initializeIntegration, enhanceAudioManager } = useAudioIntegration();
+const { updateBackground } = useAlbumArtBackground();
 
 onMounted(() => {
   // Load settings from localStorage

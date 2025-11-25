@@ -2,7 +2,12 @@
   <div class="audio-player">
     <!-- Now Playing Section -->
     <div class="header">
-      <div class="now-playing-art" ref="nowPlayingArtRef">
+      <div 
+        class="now-playing-art" 
+        ref="nowPlayingArtRef"
+        @click="openAlbumArtModal"
+        :class="{ 'clickable': albumArt }"
+      >
         <img v-if="albumArt" :src="albumArt" alt="Album Art" />
         <svg v-else width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="var(--theme-primary)" stroke-width="2">
           <path d="M9 18V5l12-2v13" />
@@ -190,6 +195,20 @@
         {{ key || '--' }} Key
       </span>
     </div>
+
+    <!-- Album Art Modal -->
+    <div 
+      v-if="showAlbumArtModal && albumArt" 
+      class="album-art-modal"
+      @click="closeAlbumArtModal"
+    >
+      <img 
+        :src="albumArt" 
+        alt="Album Art" 
+        class="album-art-zoomed"
+        @click.stop
+      />
+    </div>
   </div>
 </template>
 
@@ -210,6 +229,7 @@ const volumeHistoryCanvas = ref(null);
 const progressBarRef = ref(null);
 const nowPlayingArtRef = ref(null);
 const speedSelectRef = ref(null);
+const showAlbumArtModal = ref(false);
 
 // Volume history composable
 let volumeHistory = null;
@@ -434,6 +454,16 @@ const formatGain = (gainValue) => {
 
 const toggleQueue = () => {
   uiStore.toggleQueuePanel();
+};
+
+const openAlbumArtModal = () => {
+  if (albumArt.value) {
+    showAlbumArtModal.value = true;
+  }
+};
+
+const closeAlbumArtModal = () => {
+  showAlbumArtModal.value = false;
 };
 
 const seekTo = (event) => {
@@ -779,6 +809,63 @@ watch(isPlaying, (playing) => {
 /* Styles are in global styles.css, but we can add component-specific overrides here if needed */
 .audio-player {
   width: 100%;
+}
+
+.now-playing-art.clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.now-playing-art.clickable:hover {
+  transform: scale(1.05);
+  opacity: 0.9;
+}
+
+.album-art-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  cursor: pointer;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.album-art-zoomed {
+  max-width: 90vw;
+  max-height: 90vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: zoomIn 0.3s ease;
+  cursor: default;
+}
+
+@keyframes zoomIn {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 </style>
 

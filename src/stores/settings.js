@@ -30,7 +30,12 @@ export const useSettingsStore = defineStore('settings', {
     keyNotation: 'camelot', // 'standard', 'camelot', 'numeric'
     
     // Album Art
-    albumArtBackground: true,
+    albumArtBackground: true, // Show album art in file list
+    // Album Art Background Wallpaper
+    albumArtWallpaper: true, // Enable album art background wallpaper
+    albumArtBlur: 20,
+    albumArtOpacity: 0.3,
+    albumArtRotationSpeed: 50, // seconds for full rotation (higher = slower)
     
     // Developer
     openDevToolsOnStartup: false,
@@ -95,6 +100,10 @@ export const useSettingsStore = defineStore('settings', {
           useCamelotNotation: this.useCamelotNotation,
           keyNotation: this.keyNotation,
           albumArtBackground: this.albumArtBackground,
+          albumArtWallpaper: this.albumArtWallpaper,
+          albumArtBlur: this.albumArtBlur,
+          albumArtOpacity: this.albumArtOpacity,
+          albumArtRotationSpeed: this.albumArtRotationSpeed,
           openDevToolsOnStartup: this.openDevToolsOnStartup
         };
         localStorage.setItem('audioVisualizerSettings', JSON.stringify(settings));

@@ -10,7 +10,6 @@
       <svg class="tab-icon" viewBox="0 0 24 24" fill="currentColor">
         <path :d="tab.iconPath" />
       </svg>
-      <span class="tab-label">{{ tab.label }}</span>
     </button>
   </div>
 </template>
@@ -28,7 +27,7 @@ const tabs = [
     id: 'files',
     label: 'Files',
     title: 'File Browser',
-    iconPath: 'M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z'
+    iconPath: 'M10 4H4c-1.11 0-2 .89-2 2v12c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2h-8l-2-2z'
   },
   {
     id: 'spotify',
@@ -74,18 +73,16 @@ const switchTab = (tabId) => {
 .tab-button {
   flex: 1;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px 8px;
+  padding: 12px;
   background: transparent;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   color: rgba(181, 186, 193, 0.6);
-  min-height: 70px;
+  min-height: 60px;
   position: relative;
 }
 
@@ -116,13 +113,6 @@ const switchTab = (tabId) => {
   width: 24px;
   height: 24px;
   fill: currentColor;
-}
-
-.tab-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
 }
 </style>
 

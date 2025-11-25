@@ -285,11 +285,21 @@ body {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  z-index: 0;
+  z-index: -1; /* Behind everything including menus */
   display: none;
-  transition: opacity 0.5s ease, filter 0.5s ease;
-  transform: scale(1.1);
-  /* Slight zoom to hide edges after blur */
+  transition: opacity 0.8s ease, filter 0.8s ease;
+  transform: scale(1.15); /* Slight zoom to hide edges after blur */
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+
+@keyframes albumArtRotate {
+  from {
+    transform: scale(1.15) rotate(0deg);
+  }
+  to {
+    transform: scale(1.15) rotate(360deg);
+  }
 }
 
 .app-container {

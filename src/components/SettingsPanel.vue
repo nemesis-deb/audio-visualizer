@@ -217,6 +217,32 @@
                 </label>
                 <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Display album art thumbnails instead of music note icons</p>
               </div>
+              
+              <div class="setting-item">
+                <label class="checkbox-label">
+                  <input type="checkbox" v-model="albumArtWallpaper" @change="onSettingChange('albumArtWallpaper', albumArtWallpaper)">
+                  <span>Enable Album Art Background</span>
+                </label>
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 30px;">Show current song's album cover as blurred, rotating background</p>
+              </div>
+              
+              <div v-if="albumArtWallpaper" class="setting-item">
+                <label>Blur Power: <span>{{ albumArtBlur }}px</span></label>
+                <input type="range" v-model.number="albumArtBlur" min="0" max="100" @input="onSettingChange('albumArtBlur', albumArtBlur)">
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Adjust the blur intensity of the background</p>
+              </div>
+              
+              <div v-if="albumArtWallpaper" class="setting-item">
+                <label>Background Opacity: <span>{{ (albumArtOpacity * 100).toFixed(0) }}%</span></label>
+                <input type="range" :value="albumArtOpacity * 100" min="0" max="100" @input="albumArtOpacity = $event.target.value / 100; onSettingChange('albumArtOpacity', albumArtOpacity)">
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Adjust the transparency of the background</p>
+              </div>
+              
+              <div v-if="albumArtWallpaper" class="setting-item">
+                <label>Rotation Speed: <span>{{ albumArtRotationSpeed }}s</span></label>
+                <input type="range" v-model.number="albumArtRotationSpeed" min="10" max="200" @input="onSettingChange('albumArtRotationSpeed', albumArtRotationSpeed)">
+                <p style="font-size: 12px; color: #666; margin: 4px 0 0 0;">Time for one full rotation (lower = faster)</p>
+              </div>
             </div>
           </div>
 
@@ -379,6 +405,26 @@ const keyNotation = computed({
 const albumArtBackground = computed({
   get: () => settingsStore.albumArtBackground,
   set: (value) => settingsStore.updateSetting('albumArtBackground', value)
+});
+
+const albumArtWallpaper = computed({
+  get: () => settingsStore.albumArtWallpaper !== false,
+  set: (value) => settingsStore.updateSetting('albumArtWallpaper', value)
+});
+
+const albumArtBlur = computed({
+  get: () => settingsStore.albumArtBlur || 20,
+  set: (value) => settingsStore.updateSetting('albumArtBlur', value)
+});
+
+const albumArtOpacity = computed({
+  get: () => settingsStore.albumArtOpacity || 0.3,
+  set: (value) => settingsStore.updateSetting('albumArtOpacity', value)
+});
+
+const albumArtRotationSpeed = computed({
+  get: () => settingsStore.albumArtRotationSpeed || 50,
+  set: (value) => settingsStore.updateSetting('albumArtRotationSpeed', value)
 });
 const openDevToolsOnStartup = computed({
   get: () => settingsStore.openDevToolsOnStartup,
